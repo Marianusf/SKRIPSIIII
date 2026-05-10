@@ -185,6 +185,8 @@ class C45:
             for val, child in node["branches"].items():
                 print(f"{indent}  = {val}:")
                 self.print_tree(child, indent + "    | ")
+                
+                
     def information_gain_all_features(self, X, y):
         res = {c: self.best_numeric_split(X[c].values, np.array(y))[0] for c in X.columns}
         return dict(sorted(res.items(), key=lambda x: x[1], reverse=True))
