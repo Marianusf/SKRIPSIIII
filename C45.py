@@ -3,11 +3,7 @@ import pandas as pd
 from collections import Counter
 
 class C45:
-    def __init__(self, cat_features=[], min_samples_leaf=5, min_gain=0.001):
-        """
-        cat_features: List of indices (int) for categorical columns.
-                      Contoh: [0, 2, 5] artinya kolom ke-0, 2, dan 5 adalah kategori.
-        """
+    def __init__(self, cat_features=[], min_samples_leaf=5, min_gain=0.00):
         self.tree = None
         self.cat_features = cat_features 
         self.min_samples_leaf = min_samples_leaf
@@ -37,33 +33,23 @@ class C45:
         gain = h_parent - h_split
         if split_info < 1e-9: return 0 # Hindari pembagian nol
         return gain / split_info
-
-    # --- LOGIC 1: SPLIT NUMERIK (BINARY) ---
     def best_numeric_split(self, X_col, y):
-        # Mengurutkan data untuk mencari threshold terbaik
         sorted_idx = np.argsort(X_col)
         X_col, y = X_col[sorted_idx], y[sorted_idx]
         best_g, best_t = -1, None
-        
-        # Cek setiap kemungkinan titik potong
         for i in range(1, len(X_col)):
             if X_col[i] == X_col[i-1]: continue
             thresh = (X_col[i] + X_col[i-1]) / 2
-            
             left_mask = X_col <= thresh
-            # Optimasi: Cek jumlah sampel sebelum hitung entropy
             if np.sum(left_mask) < self.min_samples_leaf or \
                (len(y) - np.sum(left_mask)) < self.min_samples_leaf:
                 continue
-                
             left, right = y[left_mask], y[~left_mask]
             g = self.gain_ratio(y, [left, right])
             
             if g > best_g: best_g, best_t = g, thresh
             
         return best_g, best_t
-
-    # --- LOGIC 2: SPLIT KATEGORIKAL (MULTI-WAY) ---
     def calculate_categorical_gain(self, X_col, y):
         unique_vals = np.unique(X_col)
         # Jika variasi cuma 1, tidak bisa di-split
@@ -72,9 +58,7 @@ class C45:
         subsets = []
         for val in unique_vals:
             subsets.append(y[X_col == val])
-            
-        # Cek min_samples_leaf untuk setiap cabang
-        # (Opsional: C4.5 asli membiarkan ini, tapi kita safety check)
+
         if any(len(s) < 1 for s in subsets): # Minimal ada data
              pass 
 
@@ -87,17 +71,14 @@ class C45:
         if len(set(y_arr)) <= 1: return int(y_arr[0])
         # Base Case 2: Data kurang dari min_samples
         if len(y_arr) < self.min_samples_leaf: return int(Counter(y_arr).most_common(1)[0][0])
-
         best_g = -1
         best_f = None
         best_criteria = None 
         split_type = "numeric" # default
-
         # Iterasi semua kolom
         for col_name in X.columns:
             col_idx = X.columns.get_loc(col_name) # Ambil index kolom (0, 1, 2...)
             X_val = X[col_name].values
-            
             # CEK TIPE FITUR
             if col_idx in self.cat_features:
                 # ---> Jalur Kategori (Multi-way)
@@ -161,8 +142,6 @@ class C45:
             if feature_val in tree["branches"]:
                 return self.predict_one(row, tree["branches"][feature_val])
             else:
-                # Fallback: Jika ketemu nilai kategori baru yang tidak ada saat training
-                # Kembalikan majority class dari node saat ini
                 return tree["majority"]
 
     def predict(self, X):
@@ -185,6 +164,7 @@ class C45:
             for val, child in node["branches"].items():
                 print(f"{indent}  = {val}:")
                 self.print_tree(child, indent + "    | ")
+                
     def information_gain_all_features(self, X, y):
         res = {c: self.best_numeric_split(X[c].values, np.array(y))[0] for c in X.columns}
         return dict(sorted(res.items(), key=lambda x: x[1], reverse=True))
