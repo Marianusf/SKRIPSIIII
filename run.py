@@ -84,18 +84,18 @@ VALIDASIPREDIKSI = [c.lower() for c in SELECTED_FEATURES if c != TARGET]
 # ==============================
 # 2. SIDEBAR MENU
 # ==============================
-st.sidebar.title("MENU UTAMA")
+st.sidebar.markdown('<h1 style="color: white; margin-bottom: 0px;">MENU UTAMA</h1>', unsafe_allow_html=True)
 menu = st.sidebar.radio("Pilih Menu", ["MODELING", "UJI DATA"])
 
 if menu == "MODELING":
-    st.title("SISTEM PREDIKSI MAHASISWA BERISIKO SISIP PROGRAM STUDI")
+    st.title("SISTEM PREDIKSI MAHASISWA BERISIKO SISIP PROGRAM")
     st.subheader("MODELING & TRAINING")
 
     # --- 1. UPLOAD DATA ---
     c1, c2, c3 = st.columns([2, 1, 1])
     uploaded_file = c1.file_uploader("UPLOAD DATA LATIH (CSV)", type=["csv"])
     csv_tmpl = pd.DataFrame(columns=TemplateTraining).to_csv(index=False, sep=';')
-    c3.download_button("📥 FORMAT LATIH", csv_tmpl, "template_training.csv", help="Format lengkap: Identitas + Fitur + Target")
+    c3.download_button("📥 DOWNLOAD FORMAT TRAINING", csv_tmpl, "template_training.csv", help="Format lengkap: Identitas + Fitur + Target")
 
     if uploaded_file is not None:
         try:
@@ -114,7 +114,7 @@ if menu == "MODELING":
             st.divider()
         
          # --- 2. PREPROCESSING ---
-            st.subheader("1. TAHAP PREPROCESSING")
+            st.subheader("TAHAP PREPROCESSING")
             
             if st.button("▶️ JALANKAN PREPROSES"):
                 with st.spinner("Sedang membersihkan data..."):
@@ -145,7 +145,11 @@ if menu == "MODELING":
             col_d1.metric("Total Data", len(df))
             col_d2.metric("Jumlah 'Aman' (0)", c_aman)
             col_d3.metric("Jumlah 'Sisip' (1)", c_sisip) # <--- PERHATIKAN ANGKA INI
-
+            # --- B. TABEL DATA BERSIH (BAGIAN BARU) ---
+            st.write("") # Spasi
+            with st.expander("🔍 Lihat Tabel Data Hasil Preprocessing (Bersih)", expanded=True):
+                st.dataframe(df, use_container_width=True)
+                st.caption(f"Dimensi Data: {df.shape[0]} Baris x {df.shape[1]} Kolom")
             # VALIDASI KRITIS
             if c_sisip < 2:
                 st.error(f"⛔ **DATA TIDAK BISA DIPROSES!**\nJumlah data 'Sisip' hanya {c_sisip}. Minimal harus ada 2 data agar bisa dibagi (1 Latih, 1 Uji).")
@@ -154,12 +158,12 @@ if menu == "MODELING":
                 st.warning("⚠️ **PERINGATAN:** Data 'Sisip' sangat sedikit (< 10). Hasil SMOTE mungkin tidak akurat.")
             st.divider()
             # --- 3. KONFIGURASI ---
-            st.subheader("2. KONFIGURASI TRAINING")
+            st.subheader("KONFIGURASI TRAINING")
             c_param1, c_param2 = st.columns(2)
             with c_param1:
-                k_val = st.number_input("Jumlah K-Fold", 2, 10, 5)
+                k_val = st.number_input("Masukkan Jumlah K-Fold", 2, 10, 5)
             with c_param2:
-                leaf_val = st.number_input("Min Samples Leaf", 1, 50, 5)
+                leaf_val = st.number_input("Masukkan Min Samples Leaf", 1, 50, 5)
             test_size = 0.2 
 
             # --- 4. EKSEKUSI TRAINING ---
@@ -269,11 +273,11 @@ if menu == "MODELING":
                     st.session_state["active_model"] = model_to_use
                     
                     st.success("✅ Model AKTIF! Silakan pindah ke menu 'UJI DATA'.")
-                    st.warning("⚠️ Catatan: Model ini hanya hidup sementara. Jika browser di-refresh, aplikasi akan kembali menggunakan model Default (File).")
+                    st.warning("⚠️ Catatan: Model ini hanya hidup sementara. Jika browser di-refresh, Sistem akan kembali menggunakan model Default (File).")
 
 
 elif menu == "UJI DATA":
-    st.title("🎯 UJI PREDIKSI (TESTING)")
+    st.title("UJI PREDIKSI (TESTING)")
     model_used = None
 
     if "active_model" in st.session_state and st.session_state["active_model"] is not None:
@@ -296,29 +300,29 @@ elif menu == "UJI DATA":
         for k in keys:
             st.session_state[k] = None
 
-    st.subheader("1. PREDIKSI MANUAL SATUAN")
+    st.subheader("PREDIKSI MANUAL SATUAN")
     with st.form(key="form_manual"):
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("##### 🎓 Akademik")
-            ipk1 = st.number_input("IPK Semester 1", 0.0, 4.0, value=None, step=0.01, placeholder="Cth: 3.50", key="ipk1")
-            ipk2 = st.number_input("IPK Semester 2", 0.0, 4.0, value=None, step=0.01, placeholder="Cth: 3.45", key="ipk2")
-            ipk3 = st.number_input("IPK Semester 3", 0.0, 4.0, value=None, step=0.01, placeholder="Cth: 3.20", key="ipk3")
-            total_sks = st.number_input("Total SKS (Sem 1-3)", 0, 100, value=None, step=1, placeholder="Cth: 60", key="total_sks")
-            sks_d = st.number_input("Jumlah SKS Nilai D/E/F", 0, 60, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="sks_d")
+            ipk1 = st.number_input("Masukkan IPK Semester 1", 0.0, 4.0, value=None, step=0.01, placeholder="Contoh: 3.50", key="ipk1")
+            ipk2 = st.number_input("Masukkan IPK Semester 2", 0.0, 4.0, value=None, step=0.01, placeholder="Contoh: 3.45", key="ipk2")
+            ipk3 = st.number_input("Masukkan IPK Semester 3", 0.0, 4.0, value=None, step=0.01, placeholder="Contoh: 3.20", key="ipk3")
+            total_sks = st.number_input("Masukkan Total SKS (Sem 1-3)", 0, 100, value=None, step=1, placeholder="Contoh: 60", key="total_sks")
+            sks_d = st.number_input("Masukkan Jumlah SKS Nilai D/E/F", 0, 60, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="sks_d")
         with c2:
             st.markdown("##### 👤 Profil & Matakuliah")
-            mk_d = st.number_input("Jumlah Matakuliah D/E/F", 0, 50, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="mk_d")
+            mk_d = st.number_input("Masukkan Jumlah Matakuliah D/E/F", 0, 50, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="mk_d")
             
-            jalur = st.selectbox("Jalur Pendaftaran", ["Tes", "Raport", "Lain-lain"], index=None, placeholder="Pilih Jalur...", key="jalur")
-            jurusan = st.selectbox("Jurusan Sekolah", ["SMA", "SMK", "Home schooling", "Lain-lain"], index=None, placeholder="Pilih Jurusan...", key="jurusan")
-            profil = st.selectbox("Profil Sekolah", ["Negeri", "Swasta", "Lain-lain"], index=None, placeholder="Pilih Profil...", key="profil")
-            kepulauan = st.selectbox("Kepulauan Asal", ["Jawa", "Sumatera", "Bali", "Kalimantan", "Sulawesi", "Papua & Maluku", "Lain-lain"], index=None, placeholder="Pilih Asal...", key="kepulauan")
+            jalur = st.selectbox("Masukkan Jalur Pendaftaran", ["Tes", "Raport", "Lain-lain"], index=None, placeholder="Pilih Jalur...", key="jalur")
+            jurusan = st.selectbox("Masukkan Jurusan Sekolah", ["SMA", "SMK", "Home schooling", "Lain-lain"], index=None, placeholder="Pilih Jurusan...", key="jurusan")
+            profil = st.selectbox("Masukkan Profil Sekolah", ["Negeri", "Swasta", "Lain-lain"], index=None, placeholder="Pilih Profil...", key="profil")
+            kepulauan = st.selectbox("Masukkan Kepulauan Asal", ["Jawa", "Sumatera", "Bali", "Kalimantan", "Sulawesi", "Papua & Maluku", "Lain-lain"], index=None, placeholder="Pilih Asal...", key="kepulauan")
         col_reset, col_submit = st.columns([1, 1])
         with col_reset:
             st.form_submit_button("🔃 Reset Field", on_click=reset_callback, type="secondary")
         with col_submit:
-            submit = st.form_submit_button("🔍 CEK STATUS MAHASISWA", type="primary")
+            submit = st.form_submit_button("🔍 CEK HASIL PREDIKSI", type="primary")
 
         if submit:
             # A. Cek Kelengkapan
@@ -360,11 +364,11 @@ elif menu == "UJI DATA":
                     except Exception as e:
                         st.error(f"Gagal memprediksi: {e}")
     st.divider()
-    st.subheader("2. PREDIKSI BATCH (BANYAK DATA)")
+    st.subheader("PREDIKSI BATCH (BANYAK DATA)")
     csv_tmpl = pd.DataFrame(columns=TemplatePrediksi).to_csv(index=False, sep=';')
-    st.download_button("📥 FORMAT PREDIKSI", csv_tmpl, "template_prediksi.csv", help="Format: Identitas + Fitur (Tanpa kolom Status)")
+    st.download_button("📥 DOWNLOAD FORMAT PREDIKSI", csv_tmpl, "template_prediksi.csv", help="Format: Identitas + Fitur (Tanpa kolom Status)")
     # --- 2. UPLOAD FILE ---
-    batch_file = st.file_uploader("Upload File CSV Data Mahasiswa", type=["csv"])
+    batch_file = st.file_uploader("Upload File Prediksi", type=["csv"])
     if batch_file is not None:
         # --- A. VALIDASI & LOAD DATA ---
         try:
