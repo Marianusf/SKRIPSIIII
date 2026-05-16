@@ -328,7 +328,7 @@ elif menu == "UJI DATA":
             # A. Cek Kelengkapan
             input_map = {
                 "IPK Sem 1": ipk1, "IPK Sem 2": ipk2, "IPK Sem 3": ipk3,
-                "Total SKS": total_sks, "SKS Gagal": sks_d, "MK Gagal": mk_d,
+                "Total SKS": total_sks, "Jumlah SKS nilai D/E/F": sks_d, "MK nilai D/E/F": mk_d,
                 "Jalur": jalur, "Jurusan": jurusan, "Profil": profil, "Asal": kepulauan
             }
             field_kosong = [label for label, nilai in input_map.items() if nilai is None]
