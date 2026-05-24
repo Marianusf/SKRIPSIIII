@@ -4,7 +4,6 @@ import numpy as np
 import pickle
 import os
 
-# Import modul buatan sendiri
 from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.metrics import accuracy_score, recall_score, f1_score
 from imblearn.combine import SMOTEENN
@@ -12,9 +11,6 @@ from imblearn.over_sampling import SMOTENC
 from preprocessing import preprocess, get_cat_indices, TARGET, SELECTED_FEATURES
 from C45 import C45
 
-# ==============================
-# 1. KONFIGURASI & STYLE
-# ==============================
 st.set_page_config(layout="wide", page_title="Sistem Prediksi Mahasiswa")
 
 st.markdown("""
@@ -51,7 +47,7 @@ st.markdown("""
 if "data_processed" not in st.session_state:
     st.session_state["data_processed"] = None
 
-# Temp Model: Hasil training yang belum dikomit/disimpan user
+# Temp Model: Hasil training yang belum disimpan user
 if "temp_model" not in st.session_state:
     st.session_state["temp_model"] = None
 if "temp_results" not in st.session_state:
@@ -81,29 +77,24 @@ TemplatePrediksi = [
 
 VALIDASITRAINING = [c.lower() for c in SELECTED_FEATURES + [TARGET]]
 VALIDASIPREDIKSI = [c.lower() for c in SELECTED_FEATURES if c != TARGET]
-# ==============================
-# 2. SIDEBAR MENU
-# ==============================
+
 st.sidebar.markdown('<h1 style="color: white; margin-bottom: 0px;">MENU UTAMA</h1>', unsafe_allow_html=True)
 menu = st.sidebar.radio("Pilih Menu", ["MODELING", "UJI DATA"])
 
 if menu == "MODELING":
     st.title("SISTEM PREDIKSI MAHASISWA BERISIKO SISIP PROGRAM")
     st.subheader("MODELING & TRAINING")
-
     # --- 1. UPLOAD DATA ---
     c1, c2, c3 = st.columns([2, 1, 1])
     uploaded_file = c1.file_uploader("UPLOAD DATA LATIH (CSV)", type=["csv"])
     csv_tmpl = pd.DataFrame(columns=TemplateTraining).to_csv(index=False, sep=';')
     c3.download_button("📥 DOWNLOAD FORMAT TRAINING", csv_tmpl, "template_training.csv", help="Format lengkap: Identitas + Fitur + Target")
-
     if uploaded_file is not None:
         try:
             uploaded_file.seek(0)
             df_raw = pd.read_csv(uploaded_file, sep=None, engine='python') 
             uploaded_cols = [c.lower().strip() for c in df_raw.columns]
             missing_cols = [c for c in VALIDASITRAINING if c not in uploaded_cols]
-
             if missing_cols:
                 st.error("⛔ **FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template **")
                 st.warning(f"File training wajib memiliki kolom berikut (Case Insensitive):\n\n`{', '.join(missing_cols)}`")
@@ -112,14 +103,11 @@ if menu == "MODELING":
                 st.dataframe(df_raw.head())
 
             st.divider()
-        
          # --- 2. PREPROCESSING ---
             st.subheader("TAHAP PREPROCESSING")
-            
             if st.button("▶️ JALANKAN PREPROSES"):
                 with st.spinner("Sedang membersihkan data..."):
                     try:
-                        # Fungsi preprocess Anda (Pastikan menghandle penghapusan kolom Identity)
                         df_proc, _ = preprocess(df_raw)
                         st.session_state["data_processed"] = df_proc
                         st.session_state["temp_model"] = None 
@@ -132,11 +120,9 @@ if menu == "MODELING":
 
         if "data_processed" in st.session_state and st.session_state["data_processed"] is not None:
             df = st.session_state["data_processed"]
+            st.info(" **Laporan Distribusi Data:**")
             
-            # --- FITUR DIAGNOSA DATA (X-RAY) ---
-            st.info("📊 **Laporan Distribusi Data:**")
-            
-            # Hitung jumlah Aman vs Sisip
+            # untuk tampilkan jumlah data per kelas
             counts = df[TARGET].value_counts()
             c_aman = counts.get(0, 0) # Asumsi 0 = Aman
             c_sisip = counts.get(1, 0) # Asumsi 1 = Sisip (Target)
@@ -144,9 +130,9 @@ if menu == "MODELING":
             col_d1, col_d2, col_d3 = st.columns(3)
             col_d1.metric("Total Data", len(df))
             col_d2.metric("Jumlah 'Aman' (0)", c_aman)
-            col_d3.metric("Jumlah 'Sisip' (1)", c_sisip) # <--- PERHATIKAN ANGKA INI
+            col_d3.metric("Jumlah 'Sisip' (1)", c_sisip)
             # --- B. TABEL DATA BERSIH (BAGIAN BARU) ---
-            st.write("") # Spasi
+            st.write("")
             with st.expander("🔍 Lihat Tabel Data Hasil Preprocessing (Bersih)", expanded=True):
                 st.dataframe(df, use_container_width=True)
                 st.caption(f"Dimensi Data: {df.shape[0]} Baris x {df.shape[1]} Kolom")
@@ -157,15 +143,23 @@ if menu == "MODELING":
             elif c_sisip < 10:
                 st.warning("⚠️ **PERINGATAN:** Data 'Sisip' sangat sedikit (< 10). Hasil SMOTE mungkin tidak akurat.")
             st.divider()
-            # --- 3. KONFIGURASI ---
-            st.subheader("KONFIGURASI TRAINING")
+             # --- 2. KONFIGURASI TRAINING ---
+            st.subheader(" KONFIGURASI TRAINING")
             c_param1, c_param2 = st.columns(2)
             with c_param1:
-                k_val = st.number_input("Masukkan Jumlah K-Fold", 2, 10, 5)
-            with c_param2:
-                leaf_val = st.number_input("Masukkan Min Samples Leaf", 1, 50, 5)
-            test_size = 0.2 
-
+                k_val = st.number_input("Masukkan Jumlah K-Fold", min_value=2, value=5,help="Jumlah lipatan untuk Cross Validation (Standar: 5 atau 10)")
+            with c_param2:leaf_val = st.number_input("Masukkan Min Samples Leaf", min_value=1, value=5,help="Minimal sampel di ujung daun pohon keputusan (Makin kecil makin detail)")
+            errors = []
+            if k_val > 10:
+                errors.append(f"**K-Fold Error:** Nilai {k_val} terlalu besar (Maksimal 10).")
+            if leaf_val > 50:
+                errors.append(f"**Leaf Error:** Nilai {leaf_val} terlalu besar (Maksimal 50).")
+            if errors:
+                for err in errors:
+                    st.error(err)
+                st.warning("⚠️ Harap perbaiki nilai di atas agar tombol proses muncul.")
+                st.stop() 
+            test_size = 0.2
             # --- 4. EKSEKUSI TRAINING ---
             if st.button("🚀 MULAI TRAINING", type="primary"):
                 with st.spinner("Sedang training..."):
@@ -177,21 +171,17 @@ if menu == "MODELING":
                     X_train, X_test, y_train, y_test = train_test_split(
                         X, y, test_size=test_size, stratify=y, random_state=42
                     )
-
                     # TAHAP B: K-FOLD (Hanya di Training)
                     kf = StratifiedKFold(n_splits=k_val, shuffle=True, random_state=42)
                     scores_norm, scores_smote = [], []
-
                     try:
                         for train_ix, val_ix in kf.split(X_train, y_train):
                             XT, Xv = X_train.iloc[train_ix], X_train.iloc[val_ix]
                             yT, yv = y_train.iloc[train_ix], y_train.iloc[val_ix]
-
                             # Normal
                             m1 = C45(min_samples_leaf=leaf_val)
                             m1.fit(XT, yT)
                             scores_norm.append(f1_score(yv, m1.predict(Xv), average='macro'))
-
                             # SMOTE
                             try:
                                 # Pakai k=1 jika data latih < 6
@@ -206,29 +196,23 @@ if menu == "MODELING":
                     except Exception as e:
                         st.error(f"Gagal saat K-Fold: {e}")
                         st.stop()
-
                     mean_norm = np.mean(scores_norm)
                     mean_smote = np.mean(scores_smote)
-
                     # TAHAP C: FINAL TEST
                     winner = "Normal"
-                    final_score = 0
-                    
+                    final_score = 0             
                     if mean_smote > mean_norm and mean_smote > 0:
                         winner = "SMOTE-ENN"
                         # Retrain Full Train set
                         k_neigh = 1 if y_train.value_counts().min() < 6 else 5
                         sm_full = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42, k_neighbors=k_neigh), random_state=42)
-                        XT_final, yT_final = sm_full.fit_resample(X_train, y_train)
-                        
+                        XT_final, yT_final = sm_full.fit_resample(X_train, y_train)                 
                         m_final = C45(min_samples_leaf=leaf_val)
                         m_final.fit(XT_final, yT_final)
                     else:
                         m_final = C45(min_samples_leaf=leaf_val)
                         m_final.fit(X_train, y_train)
-
                     final_score = f1_score(y_test, m_final.predict(X_test), average='macro')
-
                     # TAHAP D: DEPLOYMENT (100% Data)
                     m_deploy = C45(min_samples_leaf=leaf_val)
                     if "SMOTE" in winner:
@@ -241,37 +225,29 @@ if menu == "MODELING":
                              m_deploy.fit(X, y)
                     else:
                          m_deploy.fit(X, y)
-
                     st.session_state["temp_model"] = m_deploy
                     st.session_state["temp_results"] = {
                         "norm": mean_norm, "smote": mean_smote, "test": final_score, "winner": winner
                     }
-
             # HASIL
             if "temp_results" in st.session_state and st.session_state["temp_results"] is not None:
                 res = st.session_state["temp_results"]
                 st.success("✅ Training Selesai!")
-                
                 # Tampilkan Metrik
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Validasi (Normal)", f"{res['norm']:.4f}")
-                c2.metric("Validasi (SMOTE)", f"{res['smote']:.4f}")
-                c3.metric("⭐ SKOR UJI (FINAL)", f"{res['test']:.4f}")
-                
-                st.info(f"🏆 Metode Terbaik: **{res['winner']}**")
-                if st.button("⚡ SIMPAN MODEL (SESI INI SAJA)"):
-                    model_to_use = st.session_state["temp_model"]
-                    
-                    # Tempelkan Metadata (Agar info muncul di menu Uji)
+                c1.metric("Validasi (Normal)", f"F1 Skor : {res['norm']:.4f}")
+                c2.metric("Validasi (SMOTE)", f"F1 Skor : {res['smote']:.4f}")
+                c3.metric("SKOR UJI (FINAL)", f"F1 Skor : {res['test']:.4f}") 
+                st.info(f" Metode Terbaik: **{res['winner']}**")
+                if st.button(" SIMPAN MODEL (SESI INI SAJA)"):
+                    model_to_use = st.session_state["temp_model"]     
                     model_to_use.metadata = {
                         "f1_score": res['test'],
                         "total_data": len(df),
                         "algoritma": res['winner'] + " (Sesi Live)"
-                    }
-                    
+                    }               
                     # 1. Simpan ke Session State (RAM)
-                    st.session_state["active_model"] = model_to_use
-                    
+                    st.session_state["active_model"] = model_to_use   
                     st.success("✅ Model AKTIF! Silakan pindah ke menu 'UJI DATA'.")
                     st.warning("⚠️ Catatan: Model ini hanya hidup sementara. Jika browser di-refresh, Sistem akan kembali menggunakan model Default (File).")
 
@@ -279,7 +255,6 @@ if menu == "MODELING":
 elif menu == "UJI DATA":
     st.title("UJI PREDIKSI (TESTING)")
     model_used = None
-
     if "active_model" in st.session_state and st.session_state["active_model"] is not None:
         model_used = st.session_state["active_model"]
         st.success("⚡ Menggunakan Model: HASIL TRAINING BARU (LIVE)")
@@ -290,7 +265,6 @@ elif menu == "UJI DATA":
     else:
         st.error("❌ Belum ada model! Silakan ke menu MODELING untuk training dulu.")
         st.stop()
-
     st.divider()
 
 # Fungsi untuk reset form input
@@ -350,12 +324,10 @@ elif menu == "UJI DATA":
                         'jalur pendaftaran': jalur, 'jurusan sekolah': jurusan,
                         'profil sekolah': profil, 'kepulauan asal lahir': kepulauan
                     }])
-
                     try:
                         df_clean, _ = preprocess(input_data)
                         X_final = df_clean.reindex(columns=VALIDASIPREDIKSI, fill_value=0)
-                        pred = model_used.predict(X_final)[0]
-                        
+                        pred = model_used.predict(X_final)[0]    
                         st.divider()
                         if pred == 1:
                             st.error(f"### ⚠️ HASIL: RISIKO SISIP!")
@@ -367,10 +339,8 @@ elif menu == "UJI DATA":
     st.subheader("PREDIKSI BATCH (BANYAK DATA)")
     csv_tmpl = pd.DataFrame(columns=TemplatePrediksi).to_csv(index=False, sep=';')
     st.download_button("📥 DOWNLOAD FORMAT PREDIKSI", csv_tmpl, "template_prediksi.csv", help="Format: Identitas + Fitur (Tanpa kolom Status)")
-    # --- 2. UPLOAD FILE ---
     batch_file = st.file_uploader("Upload File Prediksi", type=["csv"])
     if batch_file is not None:
-        # --- A. VALIDASI & LOAD DATA ---
         try:
             batch_file.seek(0)
             df_batch = pd.read_csv(batch_file, sep=None, engine='python')
@@ -380,8 +350,7 @@ elif menu == "UJI DATA":
             if missing_cols:
                 st.error("⛔ **FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template **")
                 st.warning(f"Sistem membutuhkan kolom berikut:\n\n`{', '.join(missing_cols)}`")
-                st.stop() # Berhenti jika validasi gagal
-            # Jika Lolos
+                st.stop()
             st.success("✅ File Valid! Siap diproses.")
             st.info("📄 Preview Data Asli")
             st.dataframe(df_batch.head())
@@ -400,7 +369,7 @@ elif menu == "UJI DATA":
                         st.success("✅ Data berhasil dibersihkan!")
                         with st.expander("Lihat Hasil Preprocessing:"):
                             st.dataframe(X_batch_clean.head()) 
-                        # 2. Buang Target (Safety Net)
+                        # 2. Buang Target
                         if TARGET in X_batch_clean.columns:
                             X_batch_clean = X_batch_clean.drop(columns=[TARGET])
                         # 3. ALIGNMENT KOLOM (PENTING!)
@@ -413,7 +382,6 @@ elif menu == "UJI DATA":
                         cols_to_drop = [c for c in df_result.columns if c.lower().strip() == TARGET.lower().strip()]
                         if cols_to_drop:
                             df_result = df_result.drop(columns=cols_to_drop)
-                        # Tampilkan & Download
                         st.success(f"✅ Prediksi Selesai! ({len(df_result)} Data)")
                         st.dataframe(df_result)
                         st.download_button(
