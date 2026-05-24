@@ -123,7 +123,6 @@ for k in kfold_list:
                 try:
                     s_nc = SMOTENC(categorical_features=cat_idx, random_state=42, k_neighbors=k_neighbors_val)
                     s_enn = SMOTEENN(smote=s_nc, random_state=42)
-                    
                     # Print info resampling hanya pada fold pertama saja
                     if not sudah_print:
                         XR_smote, yR_smote = s_nc.fit_resample(XT, yT)
