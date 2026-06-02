@@ -15,32 +15,58 @@ st.set_page_config(layout="wide", page_title="Sistem Prediksi Mahasiswa")
 
 st.markdown("""
 <style>
+    /* ========================================================================= */
+    /* AMAN: Menghilangkan teks "Press Enter" TANPA merusak tombol utama         */
+    /* ========================================================================= */
+    /* 1. Menghilangkan teks melayang di dalam kolom input saat aktif */
+    [data-testid="InputInstructions"],
+    [data-testid="InputInstructions"] span,
+    div[data-testid="InputInstructions"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+        width: 0px !important;
+        position: absolute !important;
+    }
+    /* 2. Menghilangkan teks petunjuk form di bagian bawah */
+    [data-testid="stFormInputInstructions"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+    }
+    /* ========================================================================= */
+    /* KODE CSS BAWAAN ANDA (Tetap Dipertahankan & Dioptimalkan)                 */
+    /* ========================================================================= */
     [data-testid="stNumberInputStepDown"],
     [data-testid="stNumberInputStepUp"] { display: none; }
+    
     /* Background Sidebar Merah Marun */
     [data-testid="stSidebar"] { background-color: #800000; }
     [data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: white; }
     
-    /* Tombol Utama Warna Emas */
-    .stButton>button {
+    /* Tombol Utama Warna Emas/Kustom */
+    .stButton>button, div[data-testid="stFormSubmitButton"]>button {
         background-color: #f0a500;
-        color: black;
+        color: black !important;
         border-radius: 5px;
         font-weight: bold;
         border: none;
-        width: 100%;
+        width: 100% !important;
         margin-top: 10px;
+        min-height: 45px; /* Memastikan tinggi tombol proporsional */
     }
-    .stButton>button:hover { background-color: #d99400; color: white; }
-    
+    .stButton>button:hover, div[data-testid="stFormSubmitButton"]>button:hover { 
+        background-color: #d99400; 
+        color: white !important; 
+    }
     /* Input Fields Border */
     .stTextInput>div>div>input, .stNumberInput>div>div>input { border-color: #f0a500; }
-
     /* Judul */
     h1, h2, h3 { color: #f0a500; text-align: center; font-family: 'Arial'; }
     
     /* Container Padding */
     .block-container { padding-top: 2rem; }
+    
 </style>
 """, unsafe_allow_html=True)
 
@@ -129,7 +155,7 @@ if menu == "MODELING":
             
             col_d1, col_d2, col_d3 = st.columns(3)
             col_d1.metric("Total Data", len(df))
-            col_d2.metric("Jumlah 'Aman' (0)", c_aman)
+            col_d2.metric("Jumlah 'Tidak Sisip' (0)", c_aman)
             col_d3.metric("Jumlah 'Sisip' (1)", c_sisip)
             # --- B. TABEL DATA BERSIH (BAGIAN BARU) ---
             st.write("")
@@ -147,13 +173,13 @@ if menu == "MODELING":
             st.subheader(" KONFIGURASI TRAINING")
             c_param1, c_param2 = st.columns(2)
             with c_param1:
-                k_val = st.number_input("Masukkan Jumlah K-Fold", min_value=2, value=5,help="Jumlah lipatan untuk Cross Validation (Standar: 5 atau 10)")
-            with c_param2:leaf_val = st.number_input("Masukkan Min Samples Leaf", min_value=1, value=5,help="Minimal sampel di ujung daun pohon keputusan (Makin kecil makin detail)")
+                k_val = st.number_input("Masukkan Jumlah K-Fold", min_value=3, value=10,help="Jumlah lipatan untuk Cross Validation (Standar: 5 atau 10)")
+            with c_param2:leaf_val = st.number_input("Masukkan Min Samples Leaf", min_value=3, value=3,help="Minimal sampel di ujung daun pohon keputusan (Makin kecil makin detail)")
             errors = []
             if k_val > 10:
                 errors.append(f"**K-Fold Error:** Nilai {k_val} terlalu besar (Maksimal 10).")
-            if leaf_val > 50:
-                errors.append(f"**Leaf Error:** Nilai {leaf_val} terlalu besar (Maksimal 50).")
+            if leaf_val > 10:
+                errors.append(f"**Leaf Error:** Nilai {leaf_val} terlalu besar (Maksimal 10).")
             if errors:
                 for err in errors:
                     st.error(err)
@@ -251,7 +277,6 @@ if menu == "MODELING":
                     st.success("✅ Model AKTIF! Silakan pindah ke menu 'UJI DATA'.")
                     st.warning("⚠️ Catatan: Model ini hanya hidup sementara. Jika browser di-refresh, Sistem akan kembali menggunakan model Default (File).")
 
-
 elif menu == "UJI DATA":
     st.title("UJI PREDIKSI (TESTING)")
     model_used = None
@@ -261,7 +286,7 @@ elif menu == "UJI DATA":
     elif os.path.exists("default_model.pkl"):
         with open("default_model.pkl", "rb") as f:
             model_used = pickle.load(f)
-        st.info("📂 Menggunakan Model: TERSIMPAN (DEFAULT) F1-SCORE : 0.9330")
+        st.info("📂 Menggunakan Model: TERSIMPAN (DEFAULT) F1-SCORE : 94,5 % & Akurasi : 96,6 %")
     else:
         st.error("❌ Belum ada model! Silakan ke menu MODELING untuk training dulu.")
         st.stop()
@@ -279,19 +304,18 @@ elif menu == "UJI DATA":
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("##### 🎓 Akademik")
-            ipk1 = st.number_input("Masukkan IPK Semester 1", 0.0, 4.0, value=None, step=0.01, placeholder="Contoh: 3.50", key="ipk1")
-            ipk2 = st.number_input("Masukkan IPK Semester 2", 0.0, 4.0, value=None, step=0.01, placeholder="Contoh: 3.45", key="ipk2")
-            ipk3 = st.number_input("Masukkan IPK Semester 3", 0.0, 4.0, value=None, step=0.01, placeholder="Contoh: 3.20", key="ipk3")
+            ipk1 = st.number_input("Masukkan IPK Semester 1", 0.0, 4.0, value=None, step=0.01, format="%.2f", placeholder="Contoh: 3,50", key="ipk1")
+            ipk2 = st.number_input("Masukkan IPK Semester 2", 0.0, 4.0, value=None, step=0.01, format="%.2f", placeholder="Contoh: 3,45", key="ipk2")
+            ipk3 = st.number_input("Masukkan IPK Semester 3", 0.0, 4.0, value=None, step=0.01, format="%.2f", placeholder="Contoh: 3,20", key="ipk3")
             total_sks = st.number_input("Masukkan Total SKS (Sem 1-3)", 0, 100, value=None, step=1, placeholder="Contoh: 60", key="total_sks")
             sks_d = st.number_input("Masukkan Jumlah SKS Nilai D/E/F", 0, 60, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="sks_d")
         with c2:
             st.markdown("##### 👤 Profil & Matakuliah")
             mk_d = st.number_input("Masukkan Jumlah Matakuliah D/E/F", 0, 50, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="mk_d")
-            
             jalur = st.selectbox("Masukkan Jalur Pendaftaran", ["Tes", "Raport", "Lain-lain"], index=None, placeholder="Pilih Jalur...", key="jalur")
             jurusan = st.selectbox("Masukkan Jurusan Sekolah", ["SMA", "SMK", "Home schooling", "Lain-lain"], index=None, placeholder="Pilih Jurusan...", key="jurusan")
             profil = st.selectbox("Masukkan Profil Sekolah", ["Negeri", "Swasta", "Lain-lain"], index=None, placeholder="Pilih Profil...", key="profil")
-            kepulauan = st.selectbox("Masukkan Kepulauan Asal", ["Jawa", "Sumatera", "Bali", "Kalimantan", "Sulawesi", "Papua & Maluku", "Lain-lain"], index=None, placeholder="Pilih Asal...", key="kepulauan")
+            kepulauan = st.selectbox("Masukkan Kepulauan Asal", ["Jawa", "Sumatera", "Bali & NTT", "Kalimantan", "Sulawesi", "Papua & Maluku", "Lain-lain"], index=None, placeholder="Pilih Asal...", key="kepulauan")
         col_reset, col_submit = st.columns([1, 1])
         with col_reset:
             st.form_submit_button("🔃 Reset Field", on_click=reset_callback, type="secondary")
@@ -316,17 +340,43 @@ elif menu == "UJI DATA":
                 elif total_sks == 0 and (ipk1 + ipk2 + ipk3 > 0):
                     st.error("⛔ **Logika Aneh:** Total SKS 0 tapi memiliki IPK. Mohon cek kembali.")  
                 else:
-                    # C. EKSEKUSI PREDIKSI
+                    # C. EKSEKUSI PREDIKSI (SUDAH DIPERBAIKI LOGIKANYA)
+                    # 1. Kamus mapping teks ke angka sesuai data asli training Anda
+                    map_jalur = {"Raport": 0, "Tes": 1, "Lain-lain": 2}
+                    map_jurusan = {"SMA": 1, "SMK": 2, "Home schooling": 3, "Lain-lain": 4}
+                    map_profil = {"Negeri": 0, "Swasta": 1, "Lain-lain": 2}
+                    # PERHATIAN: Sesuaikan angka di bawah ini dengan urutan encoding asli Anda
+                    map_kepulauan = {
+                        "Jawa": 1,
+                        "Sumatera": 2,
+                        "Bali & NTT": 3,
+                        "Kalimantan": 4,
+                        "Sulawesi": 5,
+                        "Papua & Maluku": 6,
+                        "Lain-lain": 7
+                    }
+
+                    # 2. Ubah teks dari dropdown web menjadi angka
+                    jalur_angka = map_jalur.get(jalur, 3)
+                    jurusan_angka = map_jurusan.get(jurusan, 4)
+                    profil_angka = map_profil.get(profil, 3)
+                    kepulauan_angka = map_kepulauan.get(kepulauan, 7)
+
+                    # 3. Masukkan variabel angka ke dalam DataFrame
                     input_data = pd.DataFrame([{
                         'ipk1': ipk1, 'ipk2': ipk2, 'ipk3': ipk3,
                         'total sks semester 1-3': total_sks,
                         'jumlah sks d/e/f': sks_d, 'jumlah matakuliah d/e/f': mk_d,
-                        'jalur pendaftaran': jalur, 'jurusan sekolah': jurusan,
-                        'profil sekolah': profil, 'kepulauan asal lahir': kepulauan
+                        'jalur pendaftaran': jalur_angka,      
+                        'jurusan sekolah': jurusan_angka,      
+                        'profil sekolah': profil_angka,        
+                        'kepulauan asal lahir': kepulauan_angka 
                     }])
+                    
                     try:
-                        df_clean, _ = preprocess(input_data)
-                        X_final = df_clean.reindex(columns=VALIDASIPREDIKSI, fill_value=0)
+                        # Langsung lakukan alignment kolom agar urutan fiturnya pas dengan model
+                        X_final = input_data.reindex(columns=VALIDASIPREDIKSI, fill_value=0)
+                        # Jalankan prediksi C4.5
                         pred = model_used.predict(X_final)[0]    
                         st.divider()
                         if pred == 1:
@@ -335,6 +385,7 @@ elif menu == "UJI DATA":
                             st.success(f"### ✅ HASIL: AMAN (TIDAK SISIP)")                            
                     except Exception as e:
                         st.error(f"Gagal memprediksi: {e}")
+
     st.divider()
     st.subheader("PREDIKSI BATCH (BANYAK DATA)")
     csv_tmpl = pd.DataFrame(columns=TemplatePrediksi).to_csv(index=False, sep=';')

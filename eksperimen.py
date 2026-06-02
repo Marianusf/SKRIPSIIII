@@ -75,7 +75,7 @@ try:
     sm_enn_demo = SMOTEENN(smote=sm_demo, random_state=42)
     XR_demo, yR_demo = sm_enn_demo.fit_resample(X_train_full, y_train_full)
     X_res_df = pd.DataFrame(XR_demo, columns=X.columns)
-    model_temp = C45()
+    model_temp = C45(min_samples_leaf=1)
     ig_results = model_temp.information_gain_all_features(X_res_df, yR_demo)
     ig_df = pd.DataFrame(list(ig_results.items()), columns=['Fitur', 'Gain Score'])
     print(ig_df.to_string(index=False))
@@ -84,7 +84,7 @@ except Exception as e:
 
 print("\n=== 6. MULAI EKSPERIMEN (MENCARI METODE TERBAIK) ===")
 kfold_list = [3, 5, 10]
-leaf_list = [5, 10, 15, 20]
+leaf_list = [3, 5, 7, 10]
 results_table = []
 # Maksimum K berdasarkan jumlah kelas minoritas
 max_k = y_train_full.value_counts().min()
