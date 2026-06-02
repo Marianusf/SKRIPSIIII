@@ -34,12 +34,30 @@ st.markdown("""
         visibility: hidden !important;
         height: 0px !important;
     }
-    /* ========================================================================= */
-    /* KODE CSS BAWAAN ANDA (Tetap Dipertahankan & Dioptimalkan)                 */
-    /* ========================================================================= */
-    [data-testid="stNumberInputStepDown"],
-    [data-testid="stNumberInputStepUp"] { display: none; }
     
+    /* ========================================================================= */
+    /* KODE CSS SINKRONISASI BINGKAI KOTAK INPUT (DIPERBAIKI)                    */
+    /* ========================================================================= */
+    /* Menghilangkan tombol step up/down (+/-) bawaan angka */
+    [data-testid="stNumberInputStepDown"],
+    [data-testid="stNumberInputStepUp"] { 
+        display: none !important; 
+    }
+    
+    /* FIX UTAMA: Mewarnai pembungkus kotak asli Streamlit agar menjadi emas tunggal */
+    div[data-baseweb="input"] {
+        border-color: #f0a500 !important;
+    }
+    
+    /* Menjaga warna border tetap emas saat kolom sedang diklik/diisi */
+    div[data-baseweb="input"]:focus-within {
+        border-color: #d99400 !important;
+        box-shadow: 0 0 0 1px #d99400 !important;
+    }
+    
+    /* ========================================================================= */
+    /* TATA LETAK UTAMA APLIKASI ANDA                                            */
+    /* ========================================================================= */
     /* Background Sidebar Merah Marun */
     [data-testid="stSidebar"] { background-color: #800000; }
     [data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: white; }
@@ -59,8 +77,7 @@ st.markdown("""
         background-color: #d99400; 
         color: white !important; 
     }
-    /* Input Fields Border */
-    .stTextInput>div>div>input, .stNumberInput>div>div>input { border-color: #f0a500; }
+    
     /* Judul */
     h1, h2, h3 { color: #f0a500; text-align: center; font-family: 'Arial'; }
     
@@ -69,6 +86,7 @@ st.markdown("""
     
 </style>
 """, unsafe_allow_html=True)
+
 
 if "data_processed" not in st.session_state:
     st.session_state["data_processed"] = None
