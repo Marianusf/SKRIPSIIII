@@ -95,23 +95,14 @@ class C45:
 
     def build_tree(self, X, y, available_features, parent_majority=0):
         y_arr = np.array(y)
-        
         if len(y_arr) == 0:
-            return int(parent_majority)
-            
+            return int(parent_majority) 
         counts = Counter(y_arr).most_common(1)
         current_majority = int(counts[0][0]) if counts else int(parent_majority)
-        
-        # Kondisi Henti Mutlak 1: Data sudah homogen (Murni)
         if self.entropy(y_arr) < 1e-9 or len(set(y_arr)) <= 1:
             return current_majority
-            
-        # Kondisi Henti Mutlak 2 (Penerapan Eksperimen min_samples_leaf):
-        # Cabang mana pun (Numerik/Kategorikal) jika total datanya di bawah batas leaf,
-        # potong pertumbuhannya di sini dan langsung jadikan DAUN KEPUTUSAN!
         if len(y_arr) < self.min_samples_leaf or len(available_features) == 0: 
             return current_majority
-        
         best_g = -1.0
         best_f = None
         best_info = None 
@@ -121,14 +112,12 @@ class C45:
             if col_name in CATEGORICAL_COLS:
                 g, info = self.evaluate_categorical(X_val, y_arr)
             else:
-                g, info = self.evaluate_numeric(X_val, y_arr)
-                
+                g, info = self.evaluate_numeric(X_val, y_arr)        
             if g > best_g:
                 best_g, best_f, best_info = g, col_name, info
 
         if best_g <= self.min_gain or best_f is None or best_info is None:
             return current_majority
-
         node = {
             "feature": best_f,
             "split_info": best_info,
@@ -146,7 +135,6 @@ class C45:
             thresh = best_info["threshold"]
             left_mask = X[best_f] <= thresh
             right_mask = X[best_f] > thresh
-            
             node["branches"]["left"] = self.build_tree(X[left_mask], y[left_mask], available_features, current_majority)
             node["branches"]["right"] = self.build_tree(X[right_mask], y[right_mask], available_features, current_majority)
             
@@ -160,8 +148,7 @@ class C45:
 
     def predict_one(self, row, tree):
         if not isinstance(tree, dict): 
-            return tree
-            
+            return tree  
         feature_val = row[tree["feature"]]
         info = tree["split_info"]
         
@@ -184,15 +171,13 @@ class C45:
             print(f"{indent}PREDIKSI: {node}")
             return
 
-        info = node["split_info"]
-        
+        info = node["split_info"]   
         if info["type"] == "categorical":
             vals = list(node["branches"].items())
             if len(vals) > 0:
                 first_val, first_branch = vals[0]
                 print(f"{indent}IF {node['feature']} == {first_val}:")
-                self.print_tree(first_branch, indent + "  | ")
-                
+                self.print_tree(first_branch, indent + "  | ")        
                 for val, branch in vals[1:]:
                     print(f"{indent}ELSE IF {node['feature']} == {val}:")
                     self.print_tree(branch, indent + "  | ")

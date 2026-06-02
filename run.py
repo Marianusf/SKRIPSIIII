@@ -340,26 +340,19 @@ elif menu == "UJI DATA":
                 elif total_sks == 0 and (ipk1 + ipk2 + ipk3 > 0):
                     st.error("⛔ **Logika Aneh:** Total SKS 0 tapi memiliki IPK. Mohon cek kembali.")  
                 else:
-                    # C. EKSEKUSI PREDIKSI (SUDAH DIPERBAIKI LOGIKANYA)
-                    # 1. Kamus mapping teks ke angka sesuai data asli training Anda
+                # 4. PEMETAAN ANGKA (Disamakan PERSIS dengan isi transform_data di preprocessing.py)
                     map_jalur = {"Raport": 0, "Tes": 1, "Lain-lain": 2}
                     map_jurusan = {"SMA": 1, "SMK": 2, "Home schooling": 3, "Lain-lain": 4}
                     map_profil = {"Negeri": 0, "Swasta": 1, "Lain-lain": 2}
-                    # PERHATIAN: Sesuaikan angka di bawah ini dengan urutan encoding asli Anda
                     map_kepulauan = {
-                        "Jawa": 1,
-                        "Sumatera": 2,
-                        "Bali & NTT": 3,
-                        "Kalimantan": 4,
-                        "Sulawesi": 5,
-                        "Papua & Maluku": 6,
-                        "Lain-lain": 7
+                        "Jawa": 1, "Sumatera": 2, "Bali & NTT": 3, "Kalimantan": 4,
+                        "Sulawesi": 5, "Papua & Maluku": 6, "Lain-lain": 7
                     }
 
                     # 2. Ubah teks dari dropdown web menjadi angka
-                    jalur_angka = map_jalur.get(jalur, 3)
+                    jalur_angka = map_jalur.get(jalur, 2)
                     jurusan_angka = map_jurusan.get(jurusan, 4)
-                    profil_angka = map_profil.get(profil, 3)
+                    profil_angka = map_profil.get(profil, 2)
                     kepulauan_angka = map_kepulauan.get(kepulauan, 7)
 
                     # 3. Masukkan variabel angka ke dalam DataFrame
@@ -387,7 +380,7 @@ elif menu == "UJI DATA":
                         st.error(f"Gagal memprediksi: {e}")
 
     st.divider()
-    st.subheader("PREDIKSI BATCH (BANYAK DATA)")
+    st.subheader("PREDIKSI BANYAK DATA (DATA BATCH)")
     csv_tmpl = pd.DataFrame(columns=TemplatePrediksi).to_csv(index=False, sep=';')
     st.download_button("📥 DOWNLOAD FORMAT PREDIKSI", csv_tmpl, "template_prediksi.csv", help="Format: Identitas + Fitur (Tanpa kolom Status)")
     batch_file = st.file_uploader("Upload File Prediksi", type=["csv"])

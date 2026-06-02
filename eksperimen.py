@@ -75,7 +75,7 @@ try:
     sm_enn_demo = SMOTEENN(smote=sm_demo, random_state=42)
     XR_demo, yR_demo = sm_enn_demo.fit_resample(X_train_full, y_train_full)
     X_res_df = pd.DataFrame(XR_demo, columns=X.columns)
-    model_temp = C45(min_samples_leaf=1)
+    model_temp = C45(min_samples_leaf=3)
     ig_results = model_temp.information_gain_all_features(X_res_df, yR_demo)
     ig_df = pd.DataFrame(list(ig_results.items()), columns=['Fitur', 'Gain Score'])
     print(ig_df.to_string(index=False))
@@ -104,7 +104,6 @@ for k in kfold_list:
             "normal": {"f1": [], "acc": [], "rec": [], "pr": []},
             "smote": {"f1": [], "acc": [], "rec": [], "pr": []}
         }
-        
         try:
             for train_idx, val_idx in kf.split(X_train_full, y_train_full):
                 XT, Xv = X_train_full.iloc[train_idx], X_train_full.iloc[val_idx]
@@ -117,8 +116,7 @@ for k in kfold_list:
                 m["normal"]["f1"].append(f1_score(yv, p, average='macro'))
                 m["normal"]["acc"].append(accuracy_score(yv, p))
                 m["normal"]["rec"].append(recall_score(yv, p, average='macro'))   
-                m["normal"]["pr"].append(precision_score(yv, p, average='macro'))
-                
+                m["normal"]["pr"].append(precision_score(yv, p, average='macro'))  
                 # 2. Model dengan SMOTE-ENN
                 try:
                     s_nc = SMOTENC(categorical_features=cat_idx, random_state=42, k_neighbors=k_neighbors_val)
