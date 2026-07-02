@@ -3,7 +3,7 @@ import numpy as np
 
 pd.set_option('future.no_silent_downcasting', True)
 
-SELECTED_FEATURES = [
+SELECTED_ATRIBUT = [
     "kepulauan asal lahir", "jurusan sekolah", "profil sekolah", "jalur pendaftaran", 
     "ipk1", "ipk2", "ipk3", "jumlah matakuliah d/e/f", "jumlah sks d/e/f", "total sks semester 1-3", 
     "status"
@@ -22,9 +22,9 @@ def load_data(filepath):
         print(f"[ERROR] Gagal load data: {e}")
         return None
 
-def select_features(df):
+def select_atribut(df):
     df.columns = df.columns.str.strip().str.lower()
-    valid_cols = [col for col in SELECTED_FEATURES if col in df.columns]
+    valid_cols = [col for col in SELECTED_ATRIBUT if col in df.columns]
     return df[valid_cols].copy()
 
 def get_cat_indices(df_x):
@@ -33,9 +33,12 @@ def get_cat_indices(df_x):
 # ==========================================
 # TAHAP 1: CLEANING
 # ==========================================
-def clean_data(df):
+def bersih_data(df):
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
+    if TARGET in df.columns:
+        df[TARGET] = df[TARGET].astype(str).str.strip().str.lower()
+        df = df[df[TARGET].isin(['tidak sisip', 'sisip'])].copy()
     # NUMERIK
     for col in NUMERIC_COLS:
         if col in df.columns:
@@ -53,7 +56,6 @@ def clean_data(df):
             modus = df[col].mode()
             val = modus[0] if not modus.empty else "lain-lain"
             df[col] = df[col].fillna(val)
-
     return df
 
 # ==========================================
@@ -62,34 +64,33 @@ def clean_data(df):
 def transform_data(df):
     df = df.copy()
     if "kepulauan asal lahir" in df.columns:
-        m = {'jawa': 1, 'sumatera': 2,'bali & ntt':3, 'kalimantan': 4, 'sulawesi': 5, 
-        'papua & maluku': 6, 'lain-lain': 7}
+        m = {'jawa': 1, 'sumatera': 2, 'bali & ntt': 3, 'kalimantan': 4, 
+             'sulawesi': 5, 'papua & maluku': 6, 'lain-lain': 7}
         df["kepulauan asal lahir"] = df["kepulauan asal lahir"].map(m).fillna(7)
+        
     if "jurusan sekolah" in df.columns:
-        m = {'sma': 1, 'smk': 2, 'homeschooling': 3, 'home schooling': 3, 'lain-lain': 4}
+        m = {'sma': 1, 'smk': 2, 'homeschooling': 3, 'lain-lain': 4}
         df["jurusan sekolah"] = df["jurusan sekolah"].map(m).fillna(4)
+        
     if "profil sekolah" in df.columns:
-        m = {'negeri': 0, 'swasta': 1, 'lain-lain': 2}
-        df["profil sekolah"] = df["profil sekolah"].map(m).fillna(2)
+        m = {'negeri': 1, 'swasta': 2, 'lain-lain': 3}
+        df["profil sekolah"] = df["profil sekolah"].map(m).fillna(3)
+        
     if "jalur pendaftaran" in df.columns:
-        m = {'raport': 0, 'tes': 1, 'lain-lain': 2}
-        df["jalur pendaftaran"] = df["jalur pendaftaran"].map(m).fillna(2)
+        m = {'raport': 1, 'tes': 2, 'lain-lain': 3}
+        df["jalur pendaftaran"] = df["jalur pendaftaran"].map(m).fillna(3)
+        
     if TARGET in df.columns:
-        target_clean = df[TARGET].astype(str).str.strip().str.lower()
-        map_target = {
-            'tidak sisip': 0, 'sisip': 1, 
-        }
-        df[TARGET] = target_clean.map(map_target).fillna(0)
-    # Seleksi Akhir & Type Casting
-    features_to_use = [c for c in SELECTED_FEATURES if c in df.columns]
+        df[TARGET] = df[TARGET].astype(str).str.strip().str.lower()
+        df = df[df[TARGET].isin(['tidak sisip', 'sisip'])].copy()
+        map_target = {'tidak sisip': 0, 'sisip': 1}
+        df[TARGET] = df[TARGET].map(map_target).astype(int)
+    features_to_use = [c for c in SELECTED_ATRIBUT if c in df.columns]
     df_final = df[features_to_use].copy()
-
-    for col in df_final.columns:
-        df_final[col] = pd.to_numeric(df_final[col], errors='coerce').fillna(0)
-
+    
     return df_final
 
 def preprocess(df_raw):
-    df_clean = clean_data(df_raw)
+    df_clean = bersih_data(df_raw)
     df_ready = transform_data(df_clean)
     return df_ready, {0: 'TIDAK SISIP', 1: 'SISIP'}
