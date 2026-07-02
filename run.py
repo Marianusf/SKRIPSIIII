@@ -5,10 +5,10 @@ import pickle
 import os
 
 from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.metrics import accuracy_score, recall_score, f1_score
+from sklearn.metrics import f1_score
 from imblearn.combine import SMOTEENN
 from imblearn.over_sampling import SMOTENC
-from preprocessing import preprocess, get_cat_indices, TARGET, SELECTED_FEATURES
+from preprocessing import preprocess, get_cat_indices, TARGET, SELECTED_ATRIBUT
 from C45 import C45
 
 st.set_page_config(layout="wide", page_title="Sistem Prediksi Mahasiswa")
@@ -87,10 +87,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 if "data_processed" not in st.session_state:
     st.session_state["data_processed"] = None
-
 # Temp Model: Hasil data Latih yang belum disimpan user
 if "temp_model" not in st.session_state:
     st.session_state["temp_model"] = None
@@ -100,6 +98,8 @@ if "temp_results" not in st.session_state:
 # Active Model: Model yang valid untuk digunakan di Prediksi Mahasiswa
 if "active_model" not in st.session_state:
     st.session_state["active_model"] = None
+if "last_file_signature" not in st.session_state:
+    st.session_state["last_file_signature"] = None
 
 TemplateDataLatih = [
     "nim","kepulauan asal lahir",
@@ -118,8 +118,8 @@ TemplatePrediksi = [
     "total sks semester 1-3",
 ]
 
-VALIDASIDATALATIH = [c.lower() for c in SELECTED_FEATURES + [TARGET]]
-VALIDASIPREDIKSI = [c.lower() for c in SELECTED_FEATURES if c != TARGET]
+VALIDASIDATALATIH = [c.lower() for c in SELECTED_ATRIBUT + [TARGET]]
+VALIDASIPREDIKSI = [c.lower() for c in SELECTED_ATRIBUT if c != TARGET]
 
 st.sidebar.markdown('<h1 style="color: white; margin-bottom: 0px;">MENU UTAMA</h1>', unsafe_allow_html=True)
 menu = st.sidebar.radio("Pilih Menu", ["PREDIKSI MAHASISWA","MANAJEMEN MODEL"])
@@ -133,18 +133,30 @@ if menu == "PREDIKSI MAHASISWA":
     elif os.path.exists("default_model.pkl"):
         with open("default_model.pkl", "rb") as f:
             model_used = pickle.load(f)
-        st.info("📂 Menggunakan Model: TERSIMPAN (DEFAULT) F1-SCORE : 94,5 % & Akurasi : 96,6 %")
+        st.info("📂 Menggunakan Model: TERSIMPAN (DEFAULT)")
     else:
         st.error("❌ Belum ada model! Silakan ke menu MANAJEMEN MODELING untuk data Latih dulu.")
         st.stop()
     st.divider()
-
     def reset_callback(): 
         keys = ["ipk1", "ipk2", "ipk3", "total_sks", "sks_d", "mk_d", 
                 "jalur", "jurusan", "profil", "kepulauan"]
         for k in keys:
             st.session_state[k] = None
 
+    # st.write(type(model_used))
+    # st.write("MIN LEAF:", model_used.min_samples_leaf)
+    # st.write("TREE ROOT:", model_used.tree["feature"])
+    # st.write(
+    # "MODEL USED LEAF:",
+    # model_used.min_samples_leaf)
+    
+    # jika ingin lihat treenya
+    # with open("default_model.pkl", "rb") as f:
+    #     default_model = pickle.load(f)
+    # st.write(default_model.print_tree())
+    # st.write(model_used.tree)
+    
     st.subheader("PREDIKSI SATU MAHASISWA")
     with st.form(key="form_manual"):
         c1, c2 = st.columns(2)
@@ -186,10 +198,10 @@ if menu == "PREDIKSI MAHASISWA":
                 elif total_sks == 0 and (ipk1 + ipk2 + ipk3 > 0):
                     st.error("⛔ **Logika Aneh:** Total SKS 0 tapi memiliki IPK. Mohon cek kembali.")  
                 else:
-                # 4. PEMETAAN ANGKA (Disamakan PERSIS dengan isi transform_data di preprocessing.py)
-                    map_jalur = {"Raport": 0, "Tes": 1, "Lain-lain": 2}
+                # 4. PEMETAAN ANGKA
+                    map_jalur = {"Raport": 1, "Tes": 2, "Lain-lain": 3}
                     map_jurusan = {"SMA": 1, "SMK": 2, "Home schooling": 3, "Lain-lain": 4}
-                    map_profil = {"Negeri": 0, "Swasta": 1, "Lain-lain": 2}
+                    map_profil = {"Negeri": 1, "Swasta": 2, "Lain-lain": 2}
                     map_kepulauan = {
                         "Jawa": 1, "Sumatera": 2, "Bali & NTT": 3, "Kalimantan": 4,
                         "Sulawesi": 5, "Papua & Maluku": 6, "Lain-lain": 7
@@ -210,8 +222,7 @@ if menu == "PREDIKSI MAHASISWA":
                         'jurusan sekolah': jurusan_angka,      
                         'profil sekolah': profil_angka,        
                         'kepulauan asal lahir': kepulauan_angka 
-                    }])
-                    
+                    }])  
                     try:
                         # Langsung lakukan alignment kolom agar urutan fiturnya pas dengan model
                         X_final = input_data.reindex(columns=VALIDASIPREDIKSI, fill_value=0)
@@ -234,12 +245,38 @@ if menu == "PREDIKSI MAHASISWA":
         try:
             batch_file.seek(0)
             df_batch = pd.read_csv(batch_file, sep=None, engine='python')
+            # File tanpa data
+            if df_batch.empty:
+                st.error("⛔ File tidak memiliki data utuk diprediksi.")
+                st.stop()
+            # Semua baris kosong
+            if df_batch.dropna(how="all").empty:
+                st.error("⛔ Semua baris pada file kosong.")
+                st.stop()
             # Cek Kolom
             uploaded_cols = [c.lower().strip() for c in df_batch.columns]
             missing_cols = [c for c in VALIDASIPREDIKSI if c not in uploaded_cols]
             if missing_cols:
                 st.error("⛔ **FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template **")
                 st.warning(f"Sistem membutuhkan kolom berikut:\n\n`{', '.join(missing_cols)}`")
+                st.stop()
+            kolom_wajib = [
+                c for c in df_batch.columns
+                if c.lower().strip() in VALIDASIPREDIKSI]
+            baris_error = df_batch[kolom_wajib].isnull().any(axis=1)
+            if baris_error.any():
+                st.dataframe(df_batch[baris_error])
+            kolom_kosong = {}
+            for col in kolom_wajib:
+                jumlah_kosong = df_batch[col].isnull().sum()
+                if jumlah_kosong > 0:
+                    kolom_kosong[col] = jumlah_kosong
+            if kolom_kosong:
+                st.error(
+                    "⛔ File tidak dapat diprediksi karena terdapat data kosong.")
+                for col, jumlah in kolom_kosong.items():
+                    st.warning(
+                        f"Kolom '{col}' memiliki {jumlah} data kosong.")
                 st.stop()
             st.success("✅ File Valid! Siap diproses.")
             st.info("📄 Preview Data Asli")
@@ -304,16 +341,48 @@ elif menu == "MANAJEMEN MODEL":
     c1, c2, c3 = st.columns([2, 1, 1])
     uploaded_file = c1.file_uploader("UPLOAD DATA LATIH (CSV)", type=["csv"], help="Data historis mahasiswa yang digunakan untuk membangun model prediksi")
     csv_tmpl = pd.DataFrame(columns=TemplateDataLatih).to_csv(index=False, sep=';')
-    c3.download_button("📥 DOWNLOAD TEMPLATE DATA LATIH", csv_tmpl, "template_data_latih.csv", help="Format lengkap: Identitas + Fitur + Target")
+    c3.download_button("📥 DOWNLOAD TEMPLATE DATA LATIH", csv_tmpl, "template_data_latih.csv", help="Silahkan download template ini untuk digunakan membangun model Prediksi")
+    
     if uploaded_file is not None:
+        current_signature = (
+        uploaded_file.name,
+        uploaded_file.size)
+        if current_signature != st.session_state["last_file_signature"]:
+            st.session_state["last_file_signature"] = current_signature
+
+            st.session_state["data_processed"] = None
+            st.session_state["temp_model"] = None
+            st.session_state["temp_results"] = None
         try:
             uploaded_file.seek(0)
-            df_raw = pd.read_csv(uploaded_file, sep=None, engine='python') 
+            df_raw = pd.read_csv(uploaded_file, sep=None, engine='python')
+            # File kosong
+            if df_raw.empty:
+                st.error("⛔ File data latih tidak memiliki data.")
+                st.stop()
+            # Semua baris kosong
+            if df_raw.dropna(how="all").empty:
+                st.error("⛔ Semua baris pada file data latih kosong.")
+                st.stop() 
             uploaded_cols = [c.lower().strip() for c in df_raw.columns]
             missing_cols = [c for c in VALIDASIDATALATIH if c not in uploaded_cols]
             if missing_cols:
                 st.error("⛔ **FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template **")
                 st.warning(f"File data latih wajib memiliki kolom berikut (Case Insensitive):\n\n`{', '.join(missing_cols)}`")
+                st.stop()
+            # Cek apakah ada atribut wajib yang seluruh nilainya kosong
+
+            kolom_kosong_total = []
+            for col in df_raw.columns:
+                nama_col = col.lower().strip()
+                if nama_col in VALIDASIDATALATIH:
+                    if df_raw[col].isna().all():
+                        kolom_kosong_total.append(col)
+            if kolom_kosong_total:
+                st.error(
+                    "⛔ File ditolak karena terdapat atribut yang seluruh nilainya kosong.")
+                st.warning(
+                    f"Kolom bermasalah: {', '.join(kolom_kosong_total)}")
                 st.stop()
             with st.expander("🔍 Lihat Data Asli"):
                 st.dataframe(df_raw.head())
@@ -326,7 +395,8 @@ elif menu == "MANAJEMEN MODEL":
                     try:
                         df_proc, _ = preprocess(df_raw)
                         st.session_state["data_processed"] = df_proc
-                        st.session_state["temp_model"] = None 
+                        st.session_state["temp_model"] = None
+                        st.session_state["temp_results"] = None
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error Preprocessing: {e}")
@@ -363,9 +433,9 @@ elif menu == "MANAJEMEN MODEL":
             st.subheader(" PENGATURAN MODEL")
             c_param1, c_param2 = st.columns(2)
             with c_param1:
-                k_val = st.number_input("Jumlah Pembagian Data Validasi (K-Fold)", min_value=3, value=10,help="Jumlah lipatan untuk Cross Validation (Standar: 5 atau 10)")
+                k_val = st.number_input("Jumlah Pembagian Data Validasi (K-Fold)", min_value=3, value=5,help="Jumlah lipatan untuk Cross Validation (Standar: 5 atau 10)")
             with c_param2:
-                leaf_val = st.number_input("Minimal Data pada Daun Keputusan", min_value=3, value=3,help="Minimal sampel di ujung daun pohon keputusan (Standar: 3 atau 5)")
+                leaf_val = st.number_input("Minimal Data pada Daun Keputusan", min_value=1, value=2,help="Minimal sampel di ujung daun pohon keputusan (Standar: 3 atau 5)")
             errors = []
             if k_val > 10:
                 errors.append(f"Jumlah Pembagian Data Validasi tidak boleh lebih dari 10. Nilai {k_val} terlalu besar.")
@@ -397,16 +467,14 @@ elif menu == "MANAJEMEN MODEL":
                             # Normal
                             m1 = C45(min_samples_leaf=leaf_val)
                             m1.fit(XT, yT)
-                            scores_norm.append(f1_score(yv, m1.predict(Xv), average='macro'))
+                            scores_norm.append(f1_score(yv, m1.predict(Xv)))
                             # SMOTE
                             try:
-                                # Pakai k=1 jika data latih < 6
-                                k_neigh = 1 if yT.value_counts().min() < 6 else 5
-                                sm = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42, k_neighbors=k_neigh), random_state=42)
+                                sm = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42),random_state=42)
                                 XR, yR = sm.fit_resample(XT, yT)
                                 m2 = C45(min_samples_leaf=leaf_val)
                                 m2.fit(XR, yR)
-                                scores_smote.append(f1_score(yv, m2.predict(Xv), average='macro'))
+                                scores_smote.append(f1_score(yv, m2.predict(Xv)))
                             except:
                                 scores_smote.append(0)
                     except Exception as e:
@@ -420,27 +488,26 @@ elif menu == "MANAJEMEN MODEL":
                     if mean_smote > mean_norm and mean_smote > 0:
                         winner = "SMOTE-ENN"
                         # Retrain Full Train set
-                        k_neigh = 1 if y_train.value_counts().min() < 6 else 5
-                        sm_full = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42, k_neighbors=k_neigh), random_state=42)
+                        sm_full = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42))
                         XT_final, yT_final = sm_full.fit_resample(X_train, y_train)                 
                         m_final = C45(min_samples_leaf=leaf_val)
                         m_final.fit(XT_final, yT_final)
                     else:
                         m_final = C45(min_samples_leaf=leaf_val)
                         m_final.fit(X_train, y_train)
-                    final_score = f1_score(y_test, m_final.predict(X_test), average='macro')
+                    final_score = f1_score(y_test, m_final.predict(X_test))
                     # TAHAP D: DEPLOYMENT (100% Data)
                     m_deploy = C45(min_samples_leaf=leaf_val)
                     if "SMOTE" in winner:
-                         try:
-                             k_neigh = 1 if y.value_counts().min() < 6 else 5
-                             sm_deploy = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42, k_neighbors=k_neigh), random_state=42)
-                             XA, yA = sm_deploy.fit_resample(X, y)
-                             m_deploy.fit(XA, yA)
-                         except:
-                             m_deploy.fit(X, y)
+                        try:
+                            sm_deploy = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx,random_state=42),random_state=42)
+                            XA, yA = sm_deploy.fit_resample(X_train,y_train)
+                            m_deploy.fit(XA, yA)
+                        except Exception as e:
+                            st.warning(f"SMOTE-ENN gagal: {e}")
+                            m_deploy.fit(X_train, y_train)
                     else:
-                         m_deploy.fit(X, y)
+                        m_deploy.fit(X_train, y_train)
                     st.session_state["temp_model"] = m_deploy
                     st.session_state["temp_results"] = {
                         "norm": mean_norm, "smote": mean_smote, "test": final_score, "winner": winner
@@ -466,4 +533,3 @@ elif menu == "MANAJEMEN MODEL":
                     st.session_state["active_model"] = model_to_use   
                     st.success("✅ Model AKTIF! Silakan pindah ke menu 'PREDIKSI MAHASISWA'.")
                     st.warning("⚠️ Catatan: Model ini hanya hidup sementara. Jika browser di-refresh, Sistem akan kembali menggunakan model Default (File).")
-

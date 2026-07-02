@@ -2,122 +2,128 @@ import numpy as np
 import pandas as pd
 from collections import Counter
 
-# Konfigurasi Atribut Global (Sesuaikan dengan Dataset Mahasiswa Anda)
 NUMERIC_COLS = ["ipk1", "ipk2", "ipk3", "jumlah matakuliah d/e/f", "jumlah sks d/e/f", "total sks semester 1-3"]
 CATEGORICAL_COLS = ["kepulauan asal lahir", "jurusan sekolah", "profil sekolah", "jalur pendaftaran"]
 TARGET = "status"
 
 class C45:
-    def __init__(self, min_samples_leaf=10, min_gain=0.0):
+    def __init__(self, min_samples_leaf=1):
         self.tree = None
         self.min_samples_leaf = min_samples_leaf
-        self.min_gain = min_gain
-
+        
     def entropy(self, y):
-        if len(y) == 0: return 0
-        y = np.array(y, dtype=int)
-        counts = np.bincount(y)
-        probs = counts / len(y)
-        return -np.sum([p * np.log2(p) for p in probs if p > 0])
+        if len(y) == 0: 
+            return 0
+        S = np.array(y, dtype=int)
+        counts = np.bincount(S)
+        
+        # p_i = Proporsi sampel per kelas
+        p_i = counts / len(S)
+        # Entropy(S) = sum( -p_i * log2(p_i) )
+        return float(np.sum([-p * np.log2(p) for p in p_i if p > 0]))
 
     def gain_ratio(self, parent, subsets):
-        total = len(parent)
-        if total == 0: return 0
-        h_parent = self.entropy(parent)
+        # S = Total baris data induk
+        S = len(parent)
+        if S == 0: 
+            return 0
         
-        if h_parent < 1e-9: return 0
-        
-        h_split = 0
-        split_info = 0
-        for sub in subsets:
-            if len(sub) == 0: continue
-            w = len(sub) / total
-            h_split += w * self.entropy(sub)
-            split_info -= w * np.log2(w)
+        Entropy_S = self.entropy(parent)
+        if Entropy_S < 1e-9: 
+            return 0
             
-        gain = h_parent - h_split
+        # Variabel untuk menampung total Sigma (penjumlahan)
+        sum_gain = 0
+        sum_split_info = 0
         
-        if gain < 1e-9: return 0 
-        if split_info < 1e-9: return 0 
+        for sub in subsets:
+            if len(sub) == 0: 
+                continue
+            # S_i = Jumlah data di subset anak cabang
+            S_i = len(sub)
+            
+            # (INFO Gain: (|S_i| / |S|) * Entropy(S_i)
+            sum_gain += (S_i / S) * self.entropy(sub)
+            
+            # (Split Info: (S_i / S) * log2(S_i / S)
+            sum_split_info += (S_i / S) * np.log2(S_i / S)
+            
+        # Gain(S, A) = Entropy(S) - sum( (|S_i|/|S|) * Entropy(S_i) )
+        Gain_S_A = Entropy_S - sum_gain
+    
+        Split_Info_S_A = -sum_split_info
         
-        return gain / split_info
+        if Gain_S_A < 1e-9: 
+            return 0 
+        if Split_Info_S_A < 1e-9: 
+            return 0 
+        
+        # Gain Ratio(S, A) = Gain(S, A) / Split Info(S, A)
+        Gain_Ratio_S_A = Gain_S_A / Split_Info_S_A
+        return Gain_Ratio_S_A
 
     def evaluate_categorical(self, X_col, y):
-        """
-        Gaya C4.5 Kolektif: Menghitung Gain Ratio secara utuh melibatkan semua cabang 
-        terlebih dahulu agar nilai kepentingannya keluar murni (seperti tabel manual Anda)
-        """
         unique_vals = np.unique(X_col)
+        if len(unique_vals) < 2:
+            return -1.0, None 
         subsets = [y[X_col == val] for val in unique_vals]
-                
+        for sub in subsets:
+            if len(sub) < self.min_samples_leaf:
+                return -1.0, None 
         g = self.gain_ratio(y, subsets)
-        return g, {"type": "categorical", "values": unique_vals}
+        return g, {"type": "categorical", "values": unique_vals.tolist()}
 
     def evaluate_numeric(self, X_col, y):
         sorted_idx = np.argsort(X_col)
         X_col, y = X_col[sorted_idx], y[sorted_idx]
         best_g = -1.0
         best_info = None
-        
-        current_entropy = self.entropy(y)
-        if current_entropy < 1e-9: 
-            return -1.0, None  
-        
+        if len(y) < (2 * self.min_samples_leaf):
+            return -1.0, None
+            
         for i in range(1, len(X_col)):
-            if X_col[i] == X_col[i-1]: continue
+            if X_col[i] == X_col[i-1]: 
+                continue
             thresh = (X_col[i] + X_col[i-1]) / 2
             left_mask = X_col <= thresh
             
             left, right = y[left_mask], y[~left_mask]
-            
-            # Saringan threshold numerik ekstrem di awal
             if len(left) < self.min_samples_leaf or len(right) < self.min_samples_leaf:
-                continue
-                
-            g = self.gain_ratio(y, [left, right])
+                continue  
             
-            if g > best_g and g > self.min_gain:  
+            g = self.gain_ratio(y, [left, right])  
+            if g > best_g:
                 best_g = g
-                best_info = {"type": "numeric", "threshold": thresh}
-                
+                best_info = {"type": "numeric", "threshold": thresh}         
         return best_g, best_info
-
-    def information_gain_all_features(self, X, y):
-        y_arr = np.array(y)
-        res = {}
-        for c in X.columns:
-            if c in CATEGORICAL_COLS:
-                g, _ = self.evaluate_categorical(X[c].values, y_arr)
-            else:
-                g, _ = self.evaluate_numeric(X[c].values, y_arr)
-            res[c] = g if g > 0 else 0.0
-        return dict(sorted(res.items(), key=lambda x: x[1], reverse=True))
 
     def build_tree(self, X, y, available_features, parent_majority=0):
         y_arr = np.array(y)
         if len(y_arr) == 0:
-            return int(parent_majority) 
+            return int(parent_majority)        
         counts = Counter(y_arr).most_common(1)
-        current_majority = int(counts[0][0]) if counts else int(parent_majority)
+        current_majority = int(counts[0][0]) if counts else int(parent_majority) 
         if self.entropy(y_arr) < 1e-9 or len(set(y_arr)) <= 1:
-            return current_majority
+            return current_majority     
         if len(y_arr) < self.min_samples_leaf or len(available_features) == 0: 
-            return current_majority
+            return current_majority     
         best_g = -1.0
         best_f = None
         best_info = None 
         
         for col_name in available_features:
             X_val = X[col_name].values
+            if len(np.unique(X_val)) <= 1:
+                continue   
             if col_name in CATEGORICAL_COLS:
                 g, info = self.evaluate_categorical(X_val, y_arr)
             else:
                 g, info = self.evaluate_numeric(X_val, y_arr)        
             if g > best_g:
                 best_g, best_f, best_info = g, col_name, info
-
-        if best_g <= self.min_gain or best_f is None or best_info is None:
+        if best_f is None or best_info is None:
             return current_majority
+            
         node = {
             "feature": best_f,
             "split_info": best_info,
@@ -125,26 +131,34 @@ class C45:
             "majority": current_majority,
             "branches": {}
         }
-
+        
         if best_info["type"] == "categorical":
             next_features = [f for f in available_features if f != best_f]
             for val in best_info["values"]:
-                mask = X[best_f] == val
-                node["branches"][val] = self.build_tree(X[mask], y[mask], next_features, current_majority)
+                mask = (X[best_f] == val).values
+                if not np.any(mask):
+                    node["branches"][val] = current_majority
+                else:
+                    node["branches"][val] = self.build_tree(X.loc[mask], y.loc[mask], next_features, current_majority)
         else:
             thresh = best_info["threshold"]
-            left_mask = X[best_f] <= thresh
-            right_mask = X[best_f] > thresh
-            node["branches"]["left"] = self.build_tree(X[left_mask], y[left_mask], available_features, current_majority)
-            node["branches"]["right"] = self.build_tree(X[right_mask], y[right_mask], available_features, current_majority)
+            left_mask = (X[best_f] <= thresh).values
+            right_mask = (X[best_f] > thresh).values
+            
+            if not np.any(left_mask) or not np.any(right_mask):
+                return current_majority
+                
+            node["branches"]["left"] = self.build_tree(X.loc[left_mask], y.loc[left_mask], available_features, current_majority)
+            node["branches"]["right"] = self.build_tree(X.loc[right_mask], y.loc[right_mask], available_features, current_majority)
             
         return node
 
     def fit(self, X, y):
-        y_series = pd.Series(y, index=X.index)
-        all_features = list(X.columns)
+        X_clean = X.reset_index(drop=True)
+        y_series = pd.Series(y).reset_index(drop=True)
+        all_features = list(X_clean.columns)
         init_majority = int(Counter(y_series).most_common(1)[0][0]) if len(y_series) > 0 else 0
-        self.tree = self.build_tree(X, y_series, all_features, init_majority)
+        self.tree = self.build_tree(X_clean, y_series, all_features, init_majority)
 
     def predict_one(self, row, tree):
         if not isinstance(tree, dict): 
@@ -152,6 +166,7 @@ class C45:
         feature_val = row[tree["feature"]]
         info = tree["split_info"]
         
+        # jika data kategori tapi nilai tidak ada di cabang, kembalikan mayoritas node saat ini
         if info["type"] == "categorical":
             if feature_val not in tree["branches"]:
                 return tree["majority"]
@@ -174,13 +189,9 @@ class C45:
         info = node["split_info"]   
         if info["type"] == "categorical":
             vals = list(node["branches"].items())
-            if len(vals) > 0:
-                first_val, first_branch = vals[0]
-                print(f"{indent}IF {node['feature']} == {first_val}:")
-                self.print_tree(first_branch, indent + "  | ")        
-                for val, branch in vals[1:]:
-                    print(f"{indent}ELSE IF {node['feature']} == {val}:")
-                    self.print_tree(branch, indent + "  | ")
+            for val, branch in vals:
+                print(f"{indent}IF {node['feature']} == {val}:")
+                self.print_tree(branch, indent + "  | ")
         else:
             print(f"{indent}IF {node['feature']} <= {info['threshold']:.3f}:")
             self.print_tree(node["branches"]["left"], indent + "  | ")
