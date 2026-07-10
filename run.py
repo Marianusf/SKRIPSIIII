@@ -15,10 +15,6 @@ st.set_page_config(layout="wide", page_title="Sistem Prediksi Mahasiswa")
 
 st.markdown("""
 <style>
-    /* ========================================================================= */
-    /* AMAN: Menghilangkan teks "Press Enter" TANPA merusak tombol utama         */
-    /* ========================================================================= */
-    /* 1. Menghilangkan teks melayang di dalam kolom input saat aktif */
     [data-testid="InputInstructions"],
     [data-testid="InputInstructions"] span,
     div[data-testid="InputInstructions"] {
@@ -28,41 +24,25 @@ st.markdown("""
         width: 0px !important;
         position: absolute !important;
     }
-    /* 2. Menghilangkan teks petunjuk form di bagian bawah */
     [data-testid="stFormInputInstructions"] {
         display: none !important;
         visibility: hidden !important;
         height: 0px !important;
     }
-    
-    /* ========================================================================= */
-    /* KODE CSS SINKRONISASI BINGKAI KOTAK INPUT (DIPERBAIKI)                    */
-    /* ========================================================================= */
-    /* Menghilangkan tombol step up/down (+/-) bawaan angka */
+
     [data-testid="stNumberInputStepDown"],
     [data-testid="stNumberInputStepUp"] { 
         display: none !important; 
     }
-    
-    /* FIX UTAMA: Mewarnai pembungkus kotak asli Streamlit agar menjadi emas tunggal */
     div[data-baseweb="input"] {
         border-color: #f0a500 !important;
     }
-    
-    /* Menjaga warna border tetap emas saat kolom sedang diklik/diisi */
     div[data-baseweb="input"]:focus-within {
         border-color: #d99400 !important;
         box-shadow: 0 0 0 1px #d99400 !important;
     }
-    
-    /* ========================================================================= */
-    /* TATA LETAK UTAMA APLIKASI ANDA                                            */
-    /* ========================================================================= */
-    /* Background Sidebar Merah Marun */
     [data-testid="stSidebar"] { background-color: #800000; }
     [data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: white; }
-    
-    /* Tombol Utama Warna Emas/Kustom */
     .stButton>button, div[data-testid="stFormSubmitButton"]>button {
         background-color: #f0a500;
         color: black !important;
@@ -71,7 +51,7 @@ st.markdown("""
         border: none;
         width: 100% !important;
         margin-top: 10px;
-        min-height: 45px; /* Memastikan tinggi tombol proporsional */
+        min-height: 45px;
     }
     .stButton>button:hover, div[data-testid="stFormSubmitButton"]>button:hover { 
         background-color: #d99400; 
@@ -111,7 +91,7 @@ TemplateDataLatih = [
     TARGET
 ]
 TemplatePrediksi = [
-    "nim","kepulauan asal lahir",
+    "kepulauan asal lahir",
     "jurusan sekolah","profil sekolah","jalur pendaftaran",
     "ipk1", "ipk2", "ipk3",  
     "jumlah matakuliah d/e/f","jumlah sks d/e/f",
@@ -162,14 +142,14 @@ if menu == "PREDIKSI MAHASISWA":
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("##### 🎓 Akademik")
-            ipk1 = st.number_input("Masukkan IPK Semester 1", 0.0, 4.0, value=None, step=0.01, format="%.2f", placeholder="Contoh: 3,50", key="ipk1")
-            ipk2 = st.number_input("Masukkan IPK Semester 2", 0.0, 4.0, value=None, step=0.01, format="%.2f", placeholder="Contoh: 3,45", key="ipk2")
-            ipk3 = st.number_input("Masukkan IPK Semester 3", 0.0, 4.0, value=None, step=0.01, format="%.2f", placeholder="Contoh: 3,20", key="ipk3")
-            total_sks = st.number_input("Masukkan Total SKS (Sem 1-3)", 0, 100, value=None, step=1, placeholder="Contoh: 60", key="total_sks")
-            sks_d = st.number_input("Masukkan Jumlah SKS Nilai D/E/F", 0, 60, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="sks_d")
+            ipk1 = st.number_input("Masukkan IPK Semester 1", 0.0, 4.0, value=None, format="%.2f", placeholder="Contoh: 3,50", key="ipk1")
+            ipk2 = st.number_input("Masukkan IPK Semester 2", 0.0, 4.0, value=None, format="%.2f", placeholder="Contoh: 3,45", key="ipk2")
+            ipk3 = st.number_input("Masukkan IPK Semester 3", 0.0, 4.0, value=None, format="%.2f", placeholder="Contoh: 3,20", key="ipk3")
+            total_sks = st.number_input("Masukkan Total SKS (Sem 1-3)", 0, 100, value=None, placeholder="Contoh: 60", key="total_sks")
+            sks_d = st.number_input("Masukkan Jumlah SKS Nilai D/E/F", 0, 60, value=None, placeholder="Ketik 0 jika tidak ada", key="sks_d")
         with c2:
             st.markdown("##### 👤 Profil & Matakuliah")
-            mk_d = st.number_input("Masukkan Jumlah Matakuliah D/E/F", 0, 50, value=None, step=1, placeholder="Ketik 0 jika tidak ada", key="mk_d")
+            mk_d = st.number_input("Masukkan Jumlah Matakuliah D/E/F", 0, 50, value=None, placeholder="Ketik 0 jika tidak ada", key="mk_d")
             jalur = st.selectbox("Masukkan Jalur Pendaftaran", ["Tes", "Raport", "Lain-lain"], index=None, placeholder="Pilih Jalur...", key="jalur")
             jurusan = st.selectbox("Masukkan Jurusan Sekolah", ["SMA", "SMK", "Home schooling", "Lain-lain"], index=None, placeholder="Pilih Jurusan...", key="jurusan")
             profil = st.selectbox("Masukkan Profil Sekolah", ["Negeri", "Swasta", "Lain-lain"], index=None, placeholder="Pilih Profil...", key="profil")
@@ -194,11 +174,11 @@ if menu == "PREDIKSI MAHASISWA":
             # B. Cek Logika Angka
             elif total_sks is not None and sks_d is not None:
                 if sks_d > total_sks:
-                    st.error("⛔ **Logika Salah:** SKS Gagal tidak boleh lebih besar dari Total SKS!")
+                    st.error("⛔ **Kesalahan Input! :** SKS Gagal tidak boleh lebih besar dari Total SKS!")
                 elif total_sks == 0 and (ipk1 + ipk2 + ipk3 > 0):
-                    st.error("⛔ **Logika Aneh:** Total SKS 0 tapi memiliki IPK. Mohon cek kembali.")  
+                    st.error("⛔ **Kesalahan Input! :** Total SKS 0 tapi memiliki IPK. Mohon cek kembali.")  
                 else:
-                # 4. PEMETAAN ANGKA
+                # PEMETAAN ANGKA
                     map_jalur = {"Raport": 1, "Tes": 2, "Lain-lain": 3}
                     map_jurusan = {"SMA": 1, "SMK": 2, "Home schooling": 3, "Lain-lain": 4}
                     map_profil = {"Negeri": 1, "Swasta": 2, "Lain-lain": 2}
@@ -207,13 +187,13 @@ if menu == "PREDIKSI MAHASISWA":
                         "Sulawesi": 5, "Papua & Maluku": 6, "Lain-lain": 7
                     }
 
-                    # 2. Ubah teks dari dropdown web menjadi angka
+                    # Ubah teks dari dropdown web menjadi angka
                     jalur_angka = map_jalur.get(jalur, 2)
                     jurusan_angka = map_jurusan.get(jurusan, 4)
                     profil_angka = map_profil.get(profil, 2)
                     kepulauan_angka = map_kepulauan.get(kepulauan, 7)
 
-                    # 3. Masukkan variabel angka ke dalam DataFrame
+                    #  Masukkan variabel angka ke dalam DataFrame
                     input_data = pd.DataFrame([{
                         'ipk1': ipk1, 'ipk2': ipk2, 'ipk3': ipk3,
                         'total sks semester 1-3': total_sks,
@@ -225,9 +205,9 @@ if menu == "PREDIKSI MAHASISWA":
                     }])  
                     try:
                         # Langsung lakukan alignment kolom agar urutan fiturnya pas dengan model
-                        X_final = input_data.reindex(columns=VALIDASIPREDIKSI, fill_value=0)
+                        X_final = input_data.reindex(columns=VALIDASIPREDIKSI)
                         # Jalankan prediksi C4.5
-                        pred = model_used.predict(X_final)[0]    
+                        pred = model_used.predict(X_final)    
                         st.divider()
                         if pred == 1:
                             st.error(f"### ⚠️ HASIL: RISIKO SISIP!")
@@ -293,18 +273,18 @@ if menu == "PREDIKSI MAHASISWA":
                     try:
                         # 1. Preprocessing
                         X_batch_clean, _ = preprocess(df_batch)
-                        st.success("✅ Data berhasil dibersihkan!")
-                        with st.expander("Lihat Hasil Data Bersih:"):
-                            st.dataframe(X_batch_clean.head()) 
                         # 2. Buang Target
                         if TARGET in X_batch_clean.columns:
                             X_batch_clean = X_batch_clean.drop(columns=[TARGET])
+                        st.success("✅ Data berhasil dibersihkan!")
+                        with st.expander("Lihat Hasil Data Bersih"):
+                            st.dataframe(X_batch_clean.head())
                         # 3. ALIGNMENT KOLOM (PENTING!)
                         X_final = X_batch_clean.reindex(columns=VALIDASIPREDIKSI, fill_value=0)
                         # 4. Prediksi
                         y_pred = model_used.predict(X_final)
                         # 5. Gabungkan Hasil ke Data Asli
-                        df_result = df_batch.copy()
+                        df_result = df_batch.loc[X_batch_clean.index].copy()
                         df_result["STATUS_PREDIKSI"] = ["RISIKO SISIP" if x == 1 else "AMAN" for x in y_pred]
                         cols_to_drop = [c for c in df_result.columns if c.lower().strip() == TARGET.lower().strip()]
                         if cols_to_drop:
@@ -349,7 +329,6 @@ elif menu == "MANAJEMEN MODEL":
         uploaded_file.size)
         if current_signature != st.session_state["last_file_signature"]:
             st.session_state["last_file_signature"] = current_signature
-
             st.session_state["data_processed"] = None
             st.session_state["temp_model"] = None
             st.session_state["temp_results"] = None
@@ -446,6 +425,8 @@ elif menu == "MANAJEMEN MODEL":
                     st.error(err)
                 st.warning("⚠️ Harap perbaiki nilai di atas agar tombol proses muncul.")
                 st.stop() 
+                
+            #bagi data latih dan data uji (80:20) 
             test_size = 0.2
             # --- 4. EKSEKUSI DATA LATIH ---
             if st.button("🚀 BANGUN MODEL", type="primary"):
@@ -488,7 +469,7 @@ elif menu == "MANAJEMEN MODEL":
                     if mean_smote > mean_norm and mean_smote > 0:
                         winner = "SMOTE-ENN"
                         # Retrain Full Train set
-                        sm_full = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42))
+                        sm_full = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42), random_state=42)
                         XT_final, yT_final = sm_full.fit_resample(X_train, y_train)                 
                         m_final = C45(min_samples_leaf=leaf_val)
                         m_final.fit(XT_final, yT_final)
@@ -497,17 +478,8 @@ elif menu == "MANAJEMEN MODEL":
                         m_final.fit(X_train, y_train)
                     final_score = f1_score(y_test, m_final.predict(X_test))
                     # TAHAP D: DEPLOYMENT (100% Data)
-                    m_deploy = C45(min_samples_leaf=leaf_val)
-                    if "SMOTE" in winner:
-                        try:
-                            sm_deploy = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx,random_state=42),random_state=42)
-                            XA, yA = sm_deploy.fit_resample(X_train,y_train)
-                            m_deploy.fit(XA, yA)
-                        except Exception as e:
-                            st.warning(f"SMOTE-ENN gagal: {e}")
-                            m_deploy.fit(X_train, y_train)
-                    else:
-                        m_deploy.fit(X_train, y_train)
+                    m_deploy = m_final 
+                    # Simpan model murni eksperimen 80% ke Session State
                     st.session_state["temp_model"] = m_deploy
                     st.session_state["temp_results"] = {
                         "norm": mean_norm, "smote": mean_smote, "test": final_score, "winner": winner

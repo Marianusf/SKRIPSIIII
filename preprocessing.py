@@ -23,43 +23,50 @@ def load_data(filepath):
         return None
 
 def select_atribut(df):
-    df.columns = df.columns.str.strip().str.lower()
+    # Mengambil hanya kolom yang valid dan terdaftar di SELECTED_ATRIBUT
     valid_cols = [col for col in SELECTED_ATRIBUT if col in df.columns]
     return df[valid_cols].copy()
 
-def get_cat_indices(df_x):
-    return [df_x.columns.get_loc(c) for c in CATEGORICAL_COLS if c in df_x.columns]
-
 # ==========================================
-# TAHAP 1: CLEANING
+# TAHAP 1: CLEANING (Data Masih Berupa Teks)
 # ==========================================
 def bersih_data(df):
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
+    # 1. Bersihkan Kolom Target terlebih dahulu dari baris bising/kosong
     if TARGET in df.columns:
         df[TARGET] = df[TARGET].astype(str).str.strip().str.lower()
         df = df[df[TARGET].isin(['tidak sisip', 'sisip'])].copy()
-    # NUMERIK
+        
+    # 2. Imputasi Kolom Numerik
     for col in NUMERIC_COLS:
         if col in df.columns:
+            # Atasi jika ada angka yang ditulis menggunakan koma (format Indonesia)
             if df[col].dtype == 'O':
                 df[col] = df[col].astype(str).str.replace(',', '.', regex=False)
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            val = df[col].median()
-            if pd.isna(val): val = 0
-            df[col] = df[col].fillna(val)
-    # KATEGORI
+            
+            # Isi missing value dengan Median, jika gagal isi 0
+            median_val = df[col].median()
+            if pd.isna(median_val): 
+                median_val = 0
+            df[col] = df[col].fillna(median_val)
+            
+    # 3. Imputasi Kolom Kategori
     for col in CATEGORICAL_COLS:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.lower()
             df[col] = df[col].replace('nan', np.nan)
+            
+            # Isi missing value dengan Modus, jika tidak ada isi 'lain-lain'
             modus = df[col].mode()
-            val = modus[0] if not modus.empty else "lain-lain"
-            df[col] = df[col].fillna(val)
+            modus_val = modus[0] if not modus.empty else "lain-lain"
+            df[col] = df[col].fillna(modus_val)
+            
     return df
 
 # ==========================================
-# TAHAP 2: TRANSFORMATION
+# TAHAP 2: TRANSFORMATION (Konversi ke Angka)
 # ==========================================
 def transform_data(df):
     df = df.copy()
@@ -79,16 +86,16 @@ def transform_data(df):
     if "jalur pendaftaran" in df.columns:
         m = {'raport': 1, 'tes': 2, 'lain-lain': 3}
         df["jalur pendaftaran"] = df["jalur pendaftaran"].map(m).fillna(3)
-        
+
     if TARGET in df.columns:
-        df[TARGET] = df[TARGET].astype(str).str.strip().str.lower()
-        df = df[df[TARGET].isin(['tidak sisip', 'sisip'])].copy()
         map_target = {'tidak sisip': 0, 'sisip': 1}
-        df[TARGET] = df[TARGET].map(map_target).astype(int)
+        df[TARGET] = df[TARGET].map(map_target)
     features_to_use = [c for c in SELECTED_ATRIBUT if c in df.columns]
-    df_final = df[features_to_use].copy()
     
-    return df_final
+    return df[features_to_use].copy()
+
+def get_cat_indices(df_x):
+    return [df_x.columns.get_loc(c) for c in CATEGORICAL_COLS if c in df_x.columns]
 
 def preprocess(df_raw):
     df_clean = bersih_data(df_raw)

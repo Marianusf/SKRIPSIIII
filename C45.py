@@ -48,7 +48,7 @@ class C45:
             # (Split Info: (S_i / S) * log2(S_i / S)
             sum_split_info += (S_i / S) * np.log2(S_i / S)
             
-        # Gain(S, A) = Entropy(S) - sum( (|S_i|/|S|) * Entropy(S_i) )
+        # (info) Gain(S, A) = Entropy(S) - sum( (|S_i|/|S|) * Entropy(S_i) )
         Gain_S_A = Entropy_S - sum_gain
     
         Split_Info_S_A = -sum_split_info
@@ -64,8 +64,6 @@ class C45:
 
     def evaluate_categorical(self, X_col, y):
         unique_vals = np.unique(X_col)
-        if len(unique_vals) < 2:
-            return -1.0, None 
         subsets = [y[X_col == val] for val in unique_vals]
         for sub in subsets:
             if len(sub) < self.min_samples_leaf:
@@ -99,8 +97,6 @@ class C45:
 
     def build_tree(self, X, y, available_features, parent_majority=0):
         y_arr = np.array(y)
-        if len(y_arr) == 0:
-            return int(parent_majority)        
         counts = Counter(y_arr).most_common(1)
         current_majority = int(counts[0][0]) if counts else int(parent_majority) 
         if self.entropy(y_arr) < 1e-9 or len(set(y_arr)) <= 1:
@@ -112,13 +108,13 @@ class C45:
         best_info = None 
         
         for col_name in available_features:
-            X_val = X[col_name].values
-            if len(np.unique(X_val)) <= 1:
-                continue   
+            X_val = X[col_name].values  
             if col_name in CATEGORICAL_COLS:
                 g, info = self.evaluate_categorical(X_val, y_arr)
             else:
-                g, info = self.evaluate_numeric(X_val, y_arr)        
+                g, info = self.evaluate_numeric(X_val, y_arr)  
+                
+            #perbandingkan gain ratio terbaik antara semua fitur yang tersedia   
             if g > best_g:
                 best_g, best_f, best_info = g, col_name, info
         if best_f is None or best_info is None:
@@ -144,9 +140,6 @@ class C45:
             thresh = best_info["threshold"]
             left_mask = (X[best_f] <= thresh).values
             right_mask = (X[best_f] > thresh).values
-            
-            if not np.any(left_mask) or not np.any(right_mask):
-                return current_majority
                 
             node["branches"]["left"] = self.build_tree(X.loc[left_mask], y.loc[left_mask], available_features, current_majority)
             node["branches"]["right"] = self.build_tree(X.loc[right_mask], y.loc[right_mask], available_features, current_majority)
@@ -161,7 +154,8 @@ class C45:
         self.tree = self.build_tree(X_clean, y_series, all_features, init_majority)
 
     def predict_one(self, row, tree):
-        if not isinstance(tree, dict): 
+        # apakah berupa kamus (dict) atau sudah berupa prediksi (leaf node)
+        if not isinstance(tree, dict):
             return tree  
         feature_val = row[tree["feature"]]
         info = tree["split_info"]

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 
 # Import fungsi dari preprocessing.py yang sudah kita perbaiki
-from preprocessing import (TARGET,load_data,preprocess,get_cat_indices,select_atribut,)
+from preprocessing import (TARGET, bersih_data,load_data,preprocess,get_cat_indices,select_atribut, transform_data,)
 from C45 import C45
 print("\n=== 1. LOADING DATA ===")
 df_raw = load_data("Dataset Mahasiswa Sisipan2.csv")
@@ -30,24 +30,29 @@ print(df_raw.isnull().sum())
 
 print("\n=== 2. SELEKSI ATRIBUT ===")
 df_selected = select_atribut(df_raw)
-print("Atribut Terpilih (ke bawah):")
-print("\n".join(df_selected.columns)) # List atribut ke bawah
-print(f"\nSisa Data: {df_selected.shape[0]} baris")
+print("Atribut Terpilih :")
+print("\n".join([f" {col}" for col in df_selected.columns]))
+print(f"Sisa Data Setelah Seleksi: {df_selected.shape[0]} baris")
 
-print("\n=== 3. PREPROCESSING ===")
-df, target_map = preprocess(df_selected)
-print("Data Siap Training:")
-print(df.head().to_string(index=False))
-print("\nTipe Data Akhir:\n")
-print(df.dtypes.to_string())
+print("\n=== 3. PEMBERSIHAN DATA  ===")
+df_clean = bersih_data(df_selected)
+print("\n Data Hasil Pembersihan :")
+print(df_clean.head(5).to_string(index=False))
+
+print("\n=== 4. DATA TRANSFORMASI  ===")
+df_transformed = transform_data(df_clean)
+print("Contoh Data Hasil Transformasi:")
+print(df_transformed.head(5).to_string(index=False))
+print("\nTipe Data Akhir:")
+print(df_transformed.dtypes.to_string())
 
 # split fitur dan target
-if TARGET not in df.columns:
+if TARGET not in df_transformed.columns:
     print(f"Error: Kolom Target '{TARGET}' hilang!")
     exit()
 
-X = df.drop(columns=[TARGET])
-y = df[TARGET]
+X = df_transformed.drop(columns=[TARGET])
+y = df_transformed[TARGET]
 
 # Cari index kolom kategorikal
 cat_idx = get_cat_indices(X)
@@ -55,7 +60,7 @@ print("\nDistribusi Kelas:")
 print(y.value_counts().to_string())
 
 
-print("\n=== 4. SPLIT DATA (80% Latih : 20% Uji Final) ===")
+print("\n=== 5. SPLIT DATA (80% Latih : 20% Uji Final) ===")
 X_train_full, X_test_final, y_train_full, y_test_final = train_test_split(
     X, y, test_size=0.20,
     stratify=y,
@@ -64,18 +69,14 @@ X_train_full, X_test_final, y_train_full, y_test_final = train_test_split(
 print(f"Data Latih: {len(X_train_full)} baris")
 print(f"Data Uji Final : {len(X_test_final)} baris")
 
-
-print("\n=== 5. MULAI EKSPERIMEN (MENCARI METODE TERBAIK) ===")
+print("\n=== 6. MULAI EKSPERIMEN (MENCARI METODE TERBAIK) ===")
 kfold_list = [3, 5, 10]
 leaf_list = [1,2,3,4,5,6,7,8,9,10]
 results_table = []
-
-
 # K-Fold loop di lapisan paling luar
 for k in kfold_list:
     kf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
-    # Siapkan penampung memori untuk menyimpan hasil semua fold yang sudah di-SMOTE-ENN
-    # agar tidak perlu dihitung berulang-ulang secara mubazir
+    # untuk simpan hasil tiap fold agar tidak perlu resampling ulang di tiap leaf
     folds_data = []
     # Jalankan loop pembagian fold dan proses SMOTE-ENN HANYA SEKALI per nilai K
     fold_idx = 1
@@ -83,21 +84,17 @@ for k in kfold_list:
         XT, Xv = X_train_full.iloc[train_idx], X_train_full.iloc[val_idx]
         yT, yv = y_train_full.iloc[train_idx], y_train_full.iloc[val_idx]
         try:
-            s_nc = SMOTENC(categorical_features=cat_idx, random_state=42)
-            s_enn = SMOTEENN(smote=s_nc, random_state=42)
+            s_enn=SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42), random_state=42)
             # Proses SMOTE-ENN dijalankan murni sekali di sini
             XR, yR = s_enn.fit_resample(XT, yT)
             # CETAK INFO RESAMPLING HANYA PADA FOLD PERTAMA DARI K-FOLD INI
             if fold_idx == 1:
-                XR_smote, yR_smote = s_nc.fit_resample(XT, yT)
                 print(f"   INFO RESAMPLING UNTUK K-FOLD = {k}")
                 print(f"==========================================")
                 print(f"Data train asli      : {len(XT)} baris")
-                print(f"Data setelah SMOTE   : {len(XR_smote)} baris")
                 print(f"Data setelah SMOTEENN: {len(XR)} baris")  
                 dist_df = pd.DataFrame({
                     'Asli': yT.value_counts(),
-                    'SMOTE': pd.Series(yR_smote).value_counts(),
                     'SMOTE-ENN': pd.Series(yR).value_counts()
                 }).fillna(0).astype(int)
                 print("\nPerubahan Distribusi Kelas:")
@@ -162,7 +159,7 @@ else:
 
 # Mengambil parameter terbaik berdasarkan F1-Score tertinggi
 best = results_df.sort_values(by="F1_mean", ascending=False).iloc[0]
-print("\n=== 6. UJI FINAL ===")
+print("\n=== 7. UJI FINAL ===")
 print(f"Parameter Terbaik -> Metode: {best['Method'].upper()} | K-Fold: {int(best['K'])} | Leaf: {int(best['Leaf'])}")
 
 # Inisialisasi data latih final
@@ -206,11 +203,11 @@ cm_df = pd.DataFrame(
 )
 print(cm_df.to_string())
 
-print("\n=== 7. PENYIMPANAN MODEL ===")
-with open('default_model.pkl', 'wb') as f:
-    pickle.dump(final_model, f)
+# print("\n=== 8. PENYIMPANAN MODEL ===")
+# with open('default_model.pkl', 'wb') as f:
+#     pickle.dump(final_model, f)
+# print("Model berhasil disimpan ke 'default_model.pkl'")
 
-print("Model berhasil disimpan ke 'default_model.pkl'")
 print("\n=== STRUKTUR POHON KEPUTUSAN ===")
 final_model.print_tree()
 
