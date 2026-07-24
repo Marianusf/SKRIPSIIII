@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-
 pd.set_option('future.no_silent_downcasting', True)
 
 SELECTED_ATRIBUT = [
@@ -22,14 +21,13 @@ def load_data(filepath):
         print(f"[ERROR] Gagal load data: {e}")
         return None
 
+# 1. select_atribut: Ambil kolom yang valid dan terdaftar di SELECTED_ATRIBUT
 def select_atribut(df):
     # Mengambil hanya kolom yang valid dan terdaftar di SELECTED_ATRIBUT
     valid_cols = [col for col in SELECTED_ATRIBUT if col in df.columns]
     return df[valid_cols].copy()
 
-# ==========================================
-# TAHAP 1: CLEANING (Data Masih Berupa Teks)
-# ==========================================
+# 2. bersih_data: Bersihkan data dari missing value dan standarisasi format
 def bersih_data(df):
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
@@ -65,9 +63,7 @@ def bersih_data(df):
             
     return df
 
-# ==========================================
-# TAHAP 2: TRANSFORMATION (Konversi ke Angka)
-# ==========================================
+# TAHAP 3: TRANSFORMATION (Konversi ke Angka)
 def transform_data(df):
     df = df.copy()
     if "kepulauan asal lahir" in df.columns:

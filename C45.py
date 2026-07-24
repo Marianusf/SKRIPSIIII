@@ -53,9 +53,7 @@ class C45:
     
         Split_Info_S_A = -sum_split_info
         
-        if Gain_S_A < 1e-9: 
-            return 0 
-        if Split_Info_S_A < 1e-9: 
+        if Gain_S_A < 1e-9 or Split_Info_S_A < 1e-9: 
             return 0 
         
         # Gain Ratio(S, A) = Gain(S, A) / Split Info(S, A)
@@ -69,12 +67,15 @@ class C45:
             if len(sub) < self.min_samples_leaf:
                 return -1.0, None 
         g = self.gain_ratio(y, subsets)
-        return g, {"type": "categorical", "values": unique_vals.tolist()}
+        if g > 1e-9:
+            return g, {"type": "categorical", "values": unique_vals.tolist()}
+        else:
+            return -1.0, None
 
     def evaluate_numeric(self, X_col, y):
         sorted_idx = np.argsort(X_col)
         X_col, y = X_col[sorted_idx], y[sorted_idx]
-        best_g = -1.0
+        best_g = 0.0
         best_info = None
         if len(y) < (2 * self.min_samples_leaf):
             return -1.0, None
@@ -90,20 +91,26 @@ class C45:
                 continue  
             
             g = self.gain_ratio(y, [left, right])  
-            if g > best_g:
+            if g > best_g and g > 1e-9:
                 best_g = g
-                best_info = {"type": "numeric", "threshold": thresh}         
+                best_info = {"type": "numeric", "threshold": thresh}        
+        
         return best_g, best_info
 
     def build_tree(self, X, y, available_features, parent_majority=0):
-        y_arr = np.array(y)
+        y_arr = np.array(y, dtype=int)
+        if len(y_arr) < self.min_samples_leaf:
+            counts = Counter(y_arr).most_common(1)
+            return int(counts[0][0]) if counts else int(parent_majority)
+            
         counts = Counter(y_arr).most_common(1)
         current_majority = int(counts[0][0]) if counts else int(parent_majority) 
-        if self.entropy(y_arr) < 1e-9 or len(set(y_arr)) <= 1:
-            return current_majority     
-        if len(y_arr) < self.min_samples_leaf or len(available_features) == 0: 
-            return current_majority     
-        best_g = -1.0
+        
+        # Cek kemurnian data (menggunakan set agar lebih sederhana & paham)
+        if len(set(y_arr)) <= 1 or len(available_features) == 0: 
+            return current_majority
+        
+        best_g = 0.0
         best_f = None
         best_info = None 
         
@@ -115,8 +122,9 @@ class C45:
                 g, info = self.evaluate_numeric(X_val, y_arr)  
                 
             #perbandingkan gain ratio terbaik antara semua fitur yang tersedia   
-            if g > best_g:
+            if g > best_g and g > 1e-9:
                 best_g, best_f, best_info = g, col_name, info
+                
         if best_f is None or best_info is None:
             return current_majority
             
@@ -140,10 +148,40 @@ class C45:
             thresh = best_info["threshold"]
             left_mask = (X[best_f] <= thresh).values
             right_mask = (X[best_f] > thresh).values
-                
+                    
             node["branches"]["left"] = self.build_tree(X.loc[left_mask], y.loc[left_mask], available_features, current_majority)
             node["branches"]["right"] = self.build_tree(X.loc[right_mask], y.loc[right_mask], available_features, current_majority)
             
+            def dapatkan_nilai_daun_tunggal(cabang):
+                # Jika sudah berupa daun (angka 0 atau 1), langsung kembalikan nilainya
+                if not isinstance(cabang, dict):
+                    return cabang
+                
+                # Jika masih berupa dictionary cabang, kumpulkan semua isi daun di bawahnya secara rekursif
+                semua_daun = set()
+                
+                def telusuri(sub_pohon):
+                    if not isinstance(sub_pohon, dict):
+                        semua_daun.add(sub_pohon)
+                    else:
+                        for anak in sub_pohon["branches"].values():
+                            telusuri(anak)
+                            
+                telusuri(cabang)
+                
+                # Jika semua ujung daun di dalam sub-pohon ini nilainya SAMA (misal cuma ada {0})
+                if len(semua_daun) == 1:
+                    return list(semua_daun)[0] # Kembalikan nilai tunggal tersebut (0 atau 1)
+                return None # Berarti isinya masih bervariasi (ada 0 dan 1), tidak boleh dipangkas
+            
+            # Evaluasi isi cabang kiri dan kanan menggunakan fungsi pintar di atas
+            hasil_kiri = dapatkan_nilai_daun_tunggal(node["branches"]["left"])
+            hasil_kanan = dapatkan_nilai_daun_tunggal(node["branches"]["right"])
+            
+            # JIKA cabang kiri dan kanan ujung-ujungnya menghasilkan keputusan yang KEMBAR
+            if hasil_kiri is not None and hasil_kanan is not None:
+                if hasil_kiri == hasil_kanan:
+                    return hasil_kiri # HANCURKAN pembelahan berantai ini, ringkas jadi daun tunggal!
         return node
 
     def fit(self, X, y):

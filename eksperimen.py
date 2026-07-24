@@ -1,4 +1,6 @@
 import pickle
+
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold, train_test_split
@@ -73,7 +75,7 @@ print("\n=== 6. MULAI EKSPERIMEN (MENCARI METODE TERBAIK) ===")
 kfold_list = [3, 5, 10]
 leaf_list = [1,2,3,4,5,6,7,8,9,10]
 results_table = []
-# K-Fold loop di lapisan paling luar
+# K-Fold loop di lapisan paling luar menggunakan LIST 
 for k in kfold_list:
     kf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
     # untuk simpan hasil tiap fold agar tidak perlu resampling ulang di tiap leaf
@@ -92,7 +94,11 @@ for k in kfold_list:
                 print(f"   INFO RESAMPLING UNTUK K-FOLD = {k}")
                 print(f"==========================================")
                 print(f"Data train asli      : {len(XT)} baris")
-                print(f"Data setelah SMOTEENN: {len(XR)} baris")  
+                print(f"Data setelah SMOTEENN: {len(XR)} baris") 
+                # melihat jumlah data per nilai yang unik
+                # print(f"Contoh Data Kepulauan Asal lahir: {XR['kepulauan asal lahir'].value_counts().to_dict()}")
+                # print(f"Contoh Data IPK3: {XR['ipk3'].map('{:.2f}'.format).value_counts().to_dict()}")
+
                 dist_df = pd.DataFrame({
                     'Asli': yT.value_counts(),
                     'SMOTE-ENN': pd.Series(yR).value_counts()
@@ -106,7 +112,7 @@ for k in kfold_list:
             print(f"Error Preprocessing di K={k}, Fold={fold_idx}: {e}")
         fold_idx += 1
         
-    # SEKARANG KITA JALANKAN PERULANGAN LEAF MENGGUNAKAN DATA YANG SUDAH JADI
+    # SEKARANG JALANKAN PERULANGAN LEAF MENGGUNAKAN DATA YANG SUDAH JADI
     for leaf in leaf_list:
         m = {
             "normal": {"f1": [], "acc": [], "rec": [], "pr": []},
@@ -171,6 +177,7 @@ if best["Method"] == "smoteenn":
         senn=SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42), random_state=42)
         X_final_train, y_final_train = senn.fit_resample(X_train_full, y_train_full)
         print("-> Resampling SMOTE + ENN (SMOTEENN) diterapkan pada data latih final.")
+        # print(f"Data setelah SMOTEENN: {len(X_final_train)} baris")
     except Exception as e:
         print(f"Gagal melakukan resampling final: {e}")
 
@@ -203,10 +210,10 @@ cm_df = pd.DataFrame(
 )
 print(cm_df.to_string())
 
-# print("\n=== 8. PENYIMPANAN MODEL ===")
-# with open('default_model.pkl', 'wb') as f:
-#     pickle.dump(final_model, f)
-# print("Model berhasil disimpan ke 'default_model.pkl'")
+print("\n=== 8. PENYIMPANAN MODEL ===")
+with open('default_model.pkl', 'wb') as f:
+    pickle.dump(final_model, f)
+print("Model berhasil disimpan ke 'default_model.pkl'")
 
 print("\n=== STRUKTUR POHON KEPUTUSAN ===")
 final_model.print_tree()

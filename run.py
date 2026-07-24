@@ -1,3 +1,4 @@
+from sklearn import tree
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -10,6 +11,7 @@ from imblearn.combine import SMOTEENN
 from imblearn.over_sampling import SMOTENC
 from preprocessing import preprocess, get_cat_indices, TARGET, SELECTED_ATRIBUT
 from C45 import C45
+from tree_visualizer import TreeVisualizer
 
 st.set_page_config(layout="wide", page_title="Sistem Prediksi Mahasiswa")
 
@@ -82,7 +84,7 @@ if "last_file_signature" not in st.session_state:
     st.session_state["last_file_signature"] = None
 
 TemplateDataLatih = [
-    "nim","kepulauan asal lahir",
+    "nim","nama","kepulauan asal lahir",
     "jurusan sekolah","profil sekolah","jalur pendaftaran",
     "ipk1", "ipk2", "ipk3", "ipk4",  
     "jumlah matakuliah d/e/f","jumlah sks d/e/f","ipk 60 sks",
@@ -91,15 +93,18 @@ TemplateDataLatih = [
     TARGET
 ]
 TemplatePrediksi = [
-    "kepulauan asal lahir",
+    "nim","nama","kepulauan asal lahir",
     "jurusan sekolah","profil sekolah","jalur pendaftaran",
     "ipk1", "ipk2", "ipk3",  
     "jumlah matakuliah d/e/f","jumlah sks d/e/f",
     "total sks semester 1-3",
 ]
-
-VALIDASIDATALATIH = [c.lower() for c in SELECTED_ATRIBUT + [TARGET]]
-VALIDASIPREDIKSI = [c.lower() for c in SELECTED_ATRIBUT if c != TARGET]
+# Pastikan kolom wajib ditulis dalam huruf kecil agar cocok dengan proses .lower()
+KOLOM_WAJIB = ['nim', 'nama']
+# 1. Validasi Data Latih (Selected Atribut + Target + NIM & Nama)
+VALIDASIDATALATIH = list(set([c.lower() for c in SELECTED_ATRIBUT + [TARGET]]))
+# 2. Validasi Prediksi (Selected Atribut + NIM & Nama, tanpa Target)
+VALIDASIPREDIKSI = list(set([c.lower() for c in SELECTED_ATRIBUT + KOLOM_WAJIB if c != TARGET]))
 
 st.sidebar.markdown('<h1 style="color: white; margin-bottom: 0px;">MENU UTAMA</h1>', unsafe_allow_html=True)
 menu = st.sidebar.radio("Pilih Menu", ["PREDIKSI MAHASISWA","MANAJEMEN MODEL"])
@@ -117,6 +122,10 @@ if menu == "PREDIKSI MAHASISWA":
     else:
         st.error("❌ Belum ada model! Silakan ke menu MANAJEMEN MODELING untuk data Latih dulu.")
         st.stop()
+    with st.expander("🌳 Lihat Hasil Pohon Keputusan"):
+        viz = TreeVisualizer()
+        dot = viz.visualize(model_used.tree)
+        st.graphviz_chart(dot)
     st.divider()
     def reset_callback(): 
         keys = ["ipk1", "ipk2", "ipk3", "total_sks", "sks_d", "mk_d", 
@@ -136,7 +145,35 @@ if menu == "PREDIKSI MAHASISWA":
     #     default_model = pickle.load(f)
     # st.write(default_model.print_tree())
     # st.write(model_used.tree)
-    
+    def get_decision_path(tree, row):
+        path = []
+        node = tree
+
+        while isinstance(node, dict):
+            feature = node["feature"]
+            threshold = node["split_info"]["threshold"]
+            value = row[feature]
+
+            # Untuk atribut numerik
+            result = value <= threshold
+            direction = "Ya" if result else "Tidak"
+
+            path.append({
+                "feature": feature,
+                "threshold": threshold,
+                "value": value,
+                "result": result,
+                "direction": direction
+            })
+
+            # Pindah ke cabang berikutnya
+            if result:
+                node = node["branches"]["left"]
+            else:
+                node = node["branches"]["right"]
+
+        # node sekarang adalah leaf (0 atau 1)
+        return path, node
     st.subheader("PREDIKSI SATU MAHASISWA")
     with st.form(key="form_manual"):
         c1, c2 = st.columns(2)
@@ -207,12 +244,37 @@ if menu == "PREDIKSI MAHASISWA":
                         # Langsung lakukan alignment kolom agar urutan fiturnya pas dengan model
                         X_final = input_data.reindex(columns=VALIDASIPREDIKSI)
                         # Jalankan prediksi C4.5
-                        pred = model_used.predict(X_final)    
+                        pred = model_used.predict(X_final)
+                        path, leaf = get_decision_path(model_used.tree,X_final.iloc[0])    
                         st.divider()
                         if pred == 1:
                             st.error(f"### ⚠️ HASIL: RISIKO SISIP!")
                         else:
-                            st.success(f"### ✅ HASIL: AMAN (TIDAK SISIP)")                            
+                            st.success(f"### ✅ HASIL: AMAN (TIDAK SISIP)")
+                            
+ 
+                        # with st.expander("🌳 Mengapa sistem memberikan hasil ini?"):
+                        #     nama_atribut = {
+                        #         "ipk1": "IPK Semester 1",
+                        #         "ipk2": "IPK Semester 2",
+                        #         "ipk3": "IPK Semester 3",
+                        #         "jumlah matakuliah d/e/f": "Jumlah MK D/E/F",
+                        #         "jumlah sks d/e/f": "Jumlah SKS D/E/F",
+                        #         "total sks semester 1-3": "Total SKS Semester 1–3"
+                        #     }
+                        #     for i, step in enumerate(path, start=1):
+                        #         nama = nama_atribut.get(step["feature"], step["feature"])
+                        #         if step["result"]:
+                        #             st.success(f"""**{i}. {nama}**
+                        #                 Nilai mahasiswa: **{step['value']}**
+                        #                 Aturan: **≤ {step['threshold']:.3f}**
+                        #                 ✔ Memenuhi aturan""")
+                        #         else:
+                        #             st.warning(f"""**{i}. {nama}**
+                        #                 Nilai mahasiswa: **{step['value']}**
+                        #                 Aturan: **≤ {step['threshold']:.3f}**
+                        #                 ✖ Tidak memenuhi aturan""")
+                        #     st.divider()                        
                     except Exception as e:
                         st.error(f"Gagal memprediksi: {e}")
 
@@ -225,10 +287,12 @@ if menu == "PREDIKSI MAHASISWA":
         try:
             batch_file.seek(0)
             df_batch = pd.read_csv(batch_file, sep=None, engine='python')
-            # File tanpa data
+            
+            # File tanpa data sama sekali
             if df_batch.empty:
                 st.error("⛔ File tidak memiliki data utuk diprediksi.")
                 st.stop()
+                
             # Semua baris kosong
             if df_batch.dropna(how="all").empty:
                 st.error("⛔ Semua baris pada file kosong.")
@@ -237,7 +301,7 @@ if menu == "PREDIKSI MAHASISWA":
             uploaded_cols = [c.lower().strip() for c in df_batch.columns]
             missing_cols = [c for c in VALIDASIPREDIKSI if c not in uploaded_cols]
             if missing_cols:
-                st.error("⛔ **FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template **")
+                st.error("⛔ FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template")
                 st.warning(f"Sistem membutuhkan kolom berikut:\n\n`{', '.join(missing_cols)}`")
                 st.stop()
             kolom_wajib = [
@@ -324,9 +388,7 @@ elif menu == "MANAJEMEN MODEL":
     c3.download_button("📥 DOWNLOAD TEMPLATE DATA LATIH", csv_tmpl, "template_data_latih.csv", help="Silahkan download template ini untuk digunakan membangun model Prediksi")
     
     if uploaded_file is not None:
-        current_signature = (
-        uploaded_file.name,
-        uploaded_file.size)
+        current_signature = (uploaded_file.name,uploaded_file.size)
         if current_signature != st.session_state["last_file_signature"]:
             st.session_state["last_file_signature"] = current_signature
             st.session_state["data_processed"] = None
@@ -346,11 +408,11 @@ elif menu == "MANAJEMEN MODEL":
             uploaded_cols = [c.lower().strip() for c in df_raw.columns]
             missing_cols = [c for c in VALIDASIDATALATIH if c not in uploaded_cols]
             if missing_cols:
-                st.error("⛔ **FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template **")
+                st.error("⛔ FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template")
                 st.warning(f"File data latih wajib memiliki kolom berikut (Case Insensitive):\n\n`{', '.join(missing_cols)}`")
                 st.stop()
+                
             # Cek apakah ada atribut wajib yang seluruh nilainya kosong
-
             kolom_kosong_total = []
             for col in df_raw.columns:
                 nama_col = col.lower().strip()
@@ -358,10 +420,8 @@ elif menu == "MANAJEMEN MODEL":
                     if df_raw[col].isna().all():
                         kolom_kosong_total.append(col)
             if kolom_kosong_total:
-                st.error(
-                    "⛔ File ditolak karena terdapat atribut yang seluruh nilainya kosong.")
-                st.warning(
-                    f"Kolom bermasalah: {', '.join(kolom_kosong_total)}")
+                st.error("⛔ File ditolak karena terdapat atribut yang seluruh nilainya kosong.")
+                st.warning(f"Kolom bermasalah: {', '.join(kolom_kosong_total)}")
                 st.stop()
             with st.expander("🔍 Lihat Data Asli"):
                 st.dataframe(df_raw.head())
@@ -478,7 +538,7 @@ elif menu == "MANAJEMEN MODEL":
                         m_final.fit(X_train, y_train)
                     final_score = f1_score(y_test, m_final.predict(X_test))
                     # TAHAP D: DEPLOYMENT (100% Data)
-                    m_deploy = m_final 
+                    m_deploy = m_final
                     # Simpan model murni eksperimen 80% ke Session State
                     st.session_state["temp_model"] = m_deploy
                     st.session_state["temp_results"] = {
@@ -505,3 +565,8 @@ elif menu == "MANAJEMEN MODEL":
                     st.session_state["active_model"] = model_to_use   
                     st.success("✅ Model AKTIF! Silakan pindah ke menu 'PREDIKSI MAHASISWA'.")
                     st.warning("⚠️ Catatan: Model ini hanya hidup sementara. Jika browser di-refresh, Sistem akan kembali menggunakan model Default (File).")
+
+                st.subheader("🌳 Visualisasi Hasil Pohon Keputusan")
+                viz = TreeVisualizer()
+                dot = viz.visualize(st.session_state["temp_model"].tree)
+                st.graphviz_chart(dot)
