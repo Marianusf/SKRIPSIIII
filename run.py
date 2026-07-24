@@ -1,486 +1,572 @@
+from sklearn import tree
 import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
 import os
 
-# Import modul buatan sendiri
-from sklearn.model_selection import StratifiedKFold
-from sklearn.metrics import accuracy_score, recall_score, f1_score
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.metrics import f1_score
 from imblearn.combine import SMOTEENN
 from imblearn.over_sampling import SMOTENC
-from preprocessing import preprocess, get_cat_indices, TARGET, SELECTED_FEATURES
+from preprocessing import preprocess, get_cat_indices, TARGET, SELECTED_ATRIBUT
 from C45 import C45
+from tree_visualizer import TreeVisualizer
 
-# ==============================
-# 1. KONFIGURASI & STYLE
-# ==============================
 st.set_page_config(layout="wide", page_title="Sistem Prediksi Mahasiswa")
 
 st.markdown("""
 <style>
-    /* Background Sidebar Merah Marun */
+    [data-testid="InputInstructions"],
+    [data-testid="InputInstructions"] span,
+    div[data-testid="InputInstructions"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+        width: 0px !important;
+        position: absolute !important;
+    }
+    [data-testid="stFormInputInstructions"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0px !important;
+    }
+
+    [data-testid="stNumberInputStepDown"],
+    [data-testid="stNumberInputStepUp"] { 
+        display: none !important; 
+    }
+    div[data-baseweb="input"] {
+        border-color: #f0a500 !important;
+    }
+    div[data-baseweb="input"]:focus-within {
+        border-color: #d99400 !important;
+        box-shadow: 0 0 0 1px #d99400 !important;
+    }
     [data-testid="stSidebar"] { background-color: #800000; }
     [data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: white; }
-    
-    /* Tombol Utama Warna Emas */
-    .stButton>button {
+    .stButton>button, div[data-testid="stFormSubmitButton"]>button {
         background-color: #f0a500;
-        color: black;
+        color: black !important;
         border-radius: 5px;
         font-weight: bold;
         border: none;
-        width: 100%;
+        width: 100% !important;
         margin-top: 10px;
+        min-height: 45px;
     }
-    .stButton>button:hover { background-color: #d99400; color: white; }
+    .stButton>button:hover, div[data-testid="stFormSubmitButton"]>button:hover { 
+        background-color: #d99400; 
+        color: white !important; 
+    }
     
-    /* Input Fields Border */
-    .stTextInput>div>div>input, .stNumberInput>div>div>input { border-color: #f0a500; }
-
     /* Judul */
     h1, h2, h3 { color: #f0a500; text-align: center; font-family: 'Arial'; }
     
     /* Container Padding */
     .block-container { padding-top: 2rem; }
+    
 </style>
 """, unsafe_allow_html=True)
 
-# --- SESSION STATE MANAGEMENT ---
 if "data_processed" not in st.session_state:
     st.session_state["data_processed"] = None
-
-# Temp Model: Hasil training yang belum dikomit/disimpan user
+# Temp Model: Hasil data Latih yang belum disimpan user
 if "temp_model" not in st.session_state:
     st.session_state["temp_model"] = None
 if "temp_results" not in st.session_state:
     st.session_state["temp_results"] = None
 
-# Active Model: Model yang valid untuk digunakan di Uji Data
+# Active Model: Model yang valid untuk digunakan di Prediksi Mahasiswa
 if "active_model" not in st.session_state:
     st.session_state["active_model"] = None
+if "last_file_signature" not in st.session_state:
+    st.session_state["last_file_signature"] = None
 
-# Urutan kolom fitur untuk prediksi (tanpa Target)
-PRED_COLUMNS = [c for c in SELECTED_FEATURES if c != TARGET]
+TemplateDataLatih = [
+    "nim","nama","kepulauan asal lahir",
+    "jurusan sekolah","profil sekolah","jalur pendaftaran",
+    "ipk1", "ipk2", "ipk3", "ipk4",  
+    "jumlah matakuliah d/e/f","jumlah sks d/e/f","ipk 60 sks",
+    "total sks semester 1-3",
+    "total sks semester 1-4",
+    TARGET
+]
+TemplatePrediksi = [
+    "nim","nama","kepulauan asal lahir",
+    "jurusan sekolah","profil sekolah","jalur pendaftaran",
+    "ipk1", "ipk2", "ipk3",  
+    "jumlah matakuliah d/e/f","jumlah sks d/e/f",
+    "total sks semester 1-3",
+]
+# Pastikan kolom wajib ditulis dalam huruf kecil agar cocok dengan proses .lower()
+KOLOM_WAJIB = ['nim', 'nama']
+# 1. Validasi Data Latih (Selected Atribut + Target + NIM & Nama)
+VALIDASIDATALATIH = list(set([c.lower() for c in SELECTED_ATRIBUT + [TARGET]]))
+# 2. Validasi Prediksi (Selected Atribut + NIM & Nama, tanpa Target)
+VALIDASIPREDIKSI = list(set([c.lower() for c in SELECTED_ATRIBUT + KOLOM_WAJIB if c != TARGET]))
 
-# ==============================
-# 2. SIDEBAR MENU
-# ==============================
-st.sidebar.title("MENU UTAMA")
-menu = st.sidebar.radio("Pilih Menu", ["MODELING", "UJI DATA"])
+st.sidebar.markdown('<h1 style="color: white; margin-bottom: 0px;">MENU UTAMA</h1>', unsafe_allow_html=True)
+menu = st.sidebar.radio("Pilih Menu", ["PREDIKSI MAHASISWA","MANAJEMEN MODEL"])
 
-# ==============================
-# MENU A: MODELING (TRAINING)
-# ==============================
-if menu == "MODELING":
-    st.title("SISTEM PREDIKSI MAHASISWA BERISIKO")
-    st.subheader("MODELING & TRAINING")
-
-    # --- A. UPLOAD DATA ---
-    c1, c2, c3 = st.columns([2, 1, 1])
-    uploaded_file = c1.file_uploader("UPLOAD DATA LATIH (CSV)", type=["csv"])
-    
-    # Tombol Download Format
-    fmt_csv = pd.DataFrame(columns=SELECTED_FEATURES).to_csv(index=False, sep=';')
-    c3.download_button("📥 FORMAT CSV", fmt_csv, "format_training.csv")
-
-    if uploaded_file is not None:
-        try:
-            uploaded_file.seek(0)
-            df_raw = pd.read_csv(uploaded_file, sep=None, engine='python') 
-        except:
-            st.error("Gagal membaca file. Pastikan format CSV benar.")
-            st.stop()
-
-        with st.expander("🔍 Lihat Data Mentah"):
-            st.dataframe(df_raw.head())
-
-        st.divider()
-        
-        # --- B. PREPROCESSING ---
-        st.subheader("1. TAHAP PREPROCESSING")
-        
-        if st.button("▶️ JALANKAN PREPROSES"):
-            with st.spinner("Sedang membersihkan data..."):
-                try:
-                    df_proc, _ = preprocess(df_raw)
-                    st.session_state["data_processed"] = df_proc
-                    st.session_state["temp_model"] = None # Reset hasil training lama jika data baru
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Terjadi error saat preprocessing: {e}")
-
-        if st.session_state["data_processed"] is not None:
-            st.success(f"Preprocessing Selesai! Total Data: {len(st.session_state['data_processed'])} baris")
-            with st.expander("📄 Lihat Data Hasil Preprocess"):
-                st.dataframe(st.session_state["data_processed"].head())
-
-            st.divider()
-
-            # --- C. TRAINING ---
-            st.subheader("2. PARAMETER & TRAINING")
-            
-            col1, col2 = st.columns(2)
-            k_val = col1.number_input("Jumlah K-Fold", 2, 10, 5)
-            leaf_val = col2.number_input("Min Samples Leaf", 1, 50, 5)
-
-            if st.button("🚀 PROSES DATA (TRAINING)"):
-                with st.spinner("Sedang melatih model..."):
-                    df = st.session_state["data_processed"]
-                    X, y = df.drop(TARGET, axis=1), df[TARGET]
-                    cat_idx = get_cat_indices(X)
-
-                    kf = StratifiedKFold(n_splits=k_val, shuffle=True, random_state=42)
-                    f1_norm, f1_smote = [], []
-
-                    # Loop K-Fold
-                    for train_idx, test_idx in kf.split(X, y):
-                        XT, Xt = X.iloc[train_idx], X.iloc[test_idx]
-                        yT, yt = y.iloc[train_idx], y.iloc[test_idx]
-
-                        # Normal
-                        model_n = C45(min_samples_leaf=leaf_val)
-                        model_n.fit(XT, yT)
-                        f1_norm.append(f1_score(yt, model_n.predict(Xt), average='macro'))
-
-                        # SMOTE-ENN
-                        sm_nc = SMOTENC(categorical_features=cat_idx, random_state=42)
-                        sm_enn = SMOTEENN(smote=sm_nc, random_state=42)
-                        try:
-                            XR, yR = sm_enn.fit_resample(XT, yT)
-                            model_s = C45(min_samples_leaf=leaf_val)
-                            model_s.fit(XR, yR)
-                            f1_smote.append(f1_score(yt, model_s.predict(Xt), average='macro'))
-                        except:
-                            f1_smote.append(0)
-
-                    # Pilih Pemenang
-                    mean_norm = np.mean(f1_norm)
-                    mean_smote = np.mean(f1_smote)
-                    
-                    X_f, y_f = X, y
-                    metode = "Normal (Tanpa Balancing)"
-                    
-                    if mean_smote > mean_norm:
-                        sm_nc_f = SMOTENC(categorical_features=cat_idx, random_state=42)
-                        sm_enn_f = SMOTEENN(smote=sm_nc_f, random_state=42)
-                        X_f, y_f = sm_enn_f.fit_resample(X, y)
-                        metode = "SMOTE-ENN (Balancing)"
-
-                    # Final Training (Disimpan di TEMP dulu)
-                    final_m = C45(min_samples_leaf=leaf_val)
-                    final_m.fit(X_f, y_f)
-
-                    st.session_state["temp_model"] = final_m
-                    st.session_state["temp_results"] = {
-                        "norm": mean_norm, "smote": mean_smote, "winner": metode
-                    }
-                    st.rerun()
-
-            # TAMPILKAN HASIL TRAINING (Jika ada di Temp)
-            if st.session_state["temp_model"] is not None:
-                res = st.session_state["temp_results"]
-                st.info(f"🏆 Metode Terpilih: **{res['winner']}**")
-                
-                m1, m2 = st.columns(2)
-                m1.metric("F1-Score (Normal)", f"{res['norm']:.4f}")
-                m2.metric("F1-Score (SMOTE-ENN)", f"{res['smote']:.4f}", delta=f"{res['smote']-res['norm']:.4f}")
-                
-                st.warning("⚠️ Model ini belum aktif. Klik Simpan di bawah untuk menggunakannya di menu Uji Data.")
-
-                # --- LOGIKA SIMPAN MODEL (COMMIT) ---
-                # Tombol ini memindahkan Temp Model -> Active Model
-                if st.button("💾 SIMPAN MODEL KE SESI (AKTIFKAN)"):
-                    st.session_state["active_model"] = st.session_state["temp_model"]
-                    
-                    # Opsional: Simpan fisik juga jika mau, tapi yang penting session-nya
-                    with open("default_model.pkl", "wb") as f:
-                        pickle.dump(st.session_state["temp_model"], f)
-                        
-                    st.success("✅ Model BERHASIL diaktifkan untuk sesi ini! Sekarang Anda bisa ke menu UJI DATA untuk mencoba prediksi.")
-
-# ==============================
-# MENU B: UJI DATA (PREDIKSI)
-elif menu == "UJI DATA":
-
-    st.title("UJI PREDIKSI")
+if menu == "PREDIKSI MAHASISWA":
+    st.title("SISTEM PREDIKSI MAHASISWA BERISIKO SISIP PROGRAM")
     model_used = None
-    if st.session_state["active_model"] is not None:
+    if "active_model" in st.session_state and st.session_state["active_model"] is not None:
         model_used = st.session_state["active_model"]
-        st.success(
-            "⚡ Menggunakan Model: HASIL TRAINING SESI INI"
-        )
+        st.success("⚡ Menggunakan Model: HASIL DATA LATIH BARU (LIVE)")
     elif os.path.exists("default_model.pkl"):
         with open("default_model.pkl", "rb") as f:
             model_used = pickle.load(f)
-        st.info(
-            "📂 Menggunakan Model: DEFAULT / TERDAHULU"
-        )
-
+        st.info("📂 Menggunakan Model: TERSIMPAN (DEFAULT)")
     else:
-
-        st.error(
-            "❌ Belum ada model! Silakan training model terlebih dahulu."
-        )
+        st.error("❌ Belum ada model! Silakan ke menu MANAJEMEN MODELING untuk data Latih dulu.")
         st.stop()
+    with st.expander("🌳 Lihat Hasil Pohon Keputusan"):
+        viz = TreeVisualizer()
+        dot = viz.visualize(model_used.tree)
+        st.graphviz_chart(dot)
     st.divider()
+    def reset_callback(): 
+        keys = ["ipk1", "ipk2", "ipk3", "total_sks", "sks_d", "mk_d", 
+                "jalur", "jurusan", "profil", "kepulauan"]
+        for k in keys:
+            st.session_state[k] = None
+
+    # st.write(type(model_used))
+    # st.write("MIN LEAF:", model_used.min_samples_leaf)
+    # st.write("TREE ROOT:", model_used.tree["feature"])
+    # st.write(
+    # "MODEL USED LEAF:",
+    # model_used.min_samples_leaf)
     
-    st.header("1. PREDIKSI MANUAL")
-    st.caption(
-        "Masukkan data mahasiswa untuk memprediksi status."
-    )
+    # jika ingin lihat treenya
+    # with open("default_model.pkl", "rb") as f:
+    #     default_model = pickle.load(f)
+    # st.write(default_model.print_tree())
+    # st.write(model_used.tree)
+    def get_decision_path(tree, row):
+        path = []
+        node = tree
 
-    with st.form(key="form_manual_prediction"):
+        while isinstance(node, dict):
+            feature = node["feature"]
+            threshold = node["split_info"]["threshold"]
+            value = row[feature]
 
+            # Untuk atribut numerik
+            result = value <= threshold
+            direction = "Ya" if result else "Tidak"
+
+            path.append({
+                "feature": feature,
+                "threshold": threshold,
+                "value": value,
+                "result": result,
+                "direction": direction
+            })
+
+            # Pindah ke cabang berikutnya
+            if result:
+                node = node["branches"]["left"]
+            else:
+                node = node["branches"]["right"]
+
+        # node sekarang adalah leaf (0 atau 1)
+        return path, node
+    st.subheader("PREDIKSI SATU MAHASISWA")
+    with st.form(key="form_manual"):
         c1, c2 = st.columns(2)
         with c1:
-
-            ipk1 = st.number_input(
-                "IPK Semester 1",
-                min_value=0.0,
-                max_value=4.0,
-                value=0.0,
-                step=0.01
-            )
-
-            ipk2 = st.number_input(
-                "IPK Semester 2",
-                min_value=0.0,
-                max_value=4.0,
-                value=0.0,
-                step=0.01
-            )
-
-            ipk3 = st.number_input(
-                "IPK Semester 3",
-                min_value=0.0,
-                max_value=4.0,
-                value=0.0,
-                step=0.01
-            )
-
-            total_sks = st.number_input(
-                "Total SKS Semester 1-3",
-                min_value=0,
-                max_value=100,
-                value=0
-            )
-
-            sks_d = st.number_input(
-                "Jumlah SKS D/E/F",
-                min_value=0,
-                max_value=60,
-                value=0
-            )
-
+            st.markdown("##### 🎓 Akademik")
+            ipk1 = st.number_input("Masukkan IPK Semester 1", 0.0, 4.0, value=None, format="%.2f", placeholder="Contoh: 3,50", key="ipk1")
+            ipk2 = st.number_input("Masukkan IPK Semester 2", 0.0, 4.0, value=None, format="%.2f", placeholder="Contoh: 3,45", key="ipk2")
+            ipk3 = st.number_input("Masukkan IPK Semester 3", 0.0, 4.0, value=None, format="%.2f", placeholder="Contoh: 3,20", key="ipk3")
+            total_sks = st.number_input("Masukkan Total SKS (Sem 1-3)", 0, 100, value=None, placeholder="Contoh: 60", key="total_sks")
+            sks_d = st.number_input("Masukkan Jumlah SKS Nilai D/E/F", 0, 60, value=None, placeholder="Ketik 0 jika tidak ada", key="sks_d")
         with c2:
+            st.markdown("##### 👤 Profil & Matakuliah")
+            mk_d = st.number_input("Masukkan Jumlah Matakuliah D/E/F", 0, 50, value=None, placeholder="Ketik 0 jika tidak ada", key="mk_d")
+            jalur = st.selectbox("Masukkan Jalur Pendaftaran", ["Tes", "Raport", "Lain-lain"], index=None, placeholder="Pilih Jalur...", key="jalur")
+            jurusan = st.selectbox("Masukkan Jurusan Sekolah", ["SMA", "SMK", "Home schooling", "Lain-lain"], index=None, placeholder="Pilih Jurusan...", key="jurusan")
+            profil = st.selectbox("Masukkan Profil Sekolah", ["Negeri", "Swasta", "Lain-lain"], index=None, placeholder="Pilih Profil...", key="profil")
+            kepulauan = st.selectbox("Masukkan Kepulauan Asal", ["Jawa", "Sumatera", "Bali & NTT", "Kalimantan", "Sulawesi", "Papua & Maluku", "Lain-lain"], index=None, placeholder="Pilih Asal...", key="kepulauan")
+        col_reset, col_submit = st.columns([1, 1])
+        with col_reset:
+            st.form_submit_button("🔃 Kosongkan Formulir", on_click=reset_callback, type="secondary")
+        with col_submit:
+            submit = st.form_submit_button("🔍 CEK HASIL PREDIKSI", type="primary")
 
-            mk_d = st.number_input(
-                "Jumlah Matakuliah D/E/F",
-                min_value=0,
-                max_value=50,
-                value=0
-            )
-
-            jalur = st.selectbox(
-                "Jalur Pendaftaran",
-                [
-                    "Tes",
-                    "Raport",
-                    "Lainnya"
-                ]
-            )
-
-            jurusan = st.selectbox(
-                "Jurusan Sekolah",
-                [
-                    "SMA",
-                    "SMK",
-                    "Homeschooling",
-                    "Lainnya"
-                ]
-            )
-
-            profil = st.selectbox(
-                "Profil Sekolah",
-                [
-                    "Negeri",
-                    "Swasta",
-                    "Lainnya"
-                ]
-            )
-
-            kepulauan = st.selectbox(
-                "Kepulauan Asal",
-                [
-                    "Jawa",
-                    "Sumatera",
-                    "Bali",
-                    "Kalimantan",
-                    "Sulawesi",
-                    "Papua & Maluku",
-                    "Lainnya"
-                ]
-            )
-
-        submit_manual = st.form_submit_button(
-            "🔍 CEK STATUS",
-            type="primary"
-        )
-
-        if submit_manual:
-
-            errors = []
-            warnings = []
-
-            if sks_d > total_sks:
-
-                errors.append(
-                    "Jumlah SKS D/E/F tidak boleh melebihi total SKS."
-                )
-
-            if total_sks == 0 and (
-                ipk1 > 0 or
-                ipk2 > 0 or
-                ipk3 > 0
-            ):
-
-                errors.append(
-                    "IPK tidak mungkin ada jika total SKS masih 0."
-                )
-
-            if mk_d > total_sks:
-
-                errors.append(
-                    "Jumlah matakuliah gagal terlalu besar dibanding total SKS."
-                )
-            if errors:
-
-                for err in errors:
-                    st.error(err)
-
-                st.stop()
-            for warn in warnings:
-                st.warning(warn)
-
-            input_data = pd.DataFrame([{
-                'ipk1': ipk1,
-                'ipk2': ipk2,
-                'ipk3': ipk3,
-                'total sks semester 1-3': total_sks,
-                'jumlah sks d/e/f': sks_d,
-                'jumlah matakuliah d/e/f': mk_d,
-                'jalur pendaftaran': jalur,
-                'jurusan sekolah': jurusan,
-                'profil sekolah': profil,
-                'kepulauan asal lahir': kepulauan
-            }])
-
-            input_data, _ = preprocess(input_data)
-
-            if TARGET in input_data.columns:
-
-                input_data = input_data.drop(
-                    columns=[TARGET]
-                )
-
-            for col in PRED_COLUMNS:
-
-                if col not in input_data.columns:
-                    input_data[col] = 0
-
-            input_data = input_data[PRED_COLUMNS]
-
-            try:
-
-                pred = model_used.predict(
-                    input_data
-                )[0]
-                st.divider()
-                if pred == 1:
-                    st.error(
-                        "### ⚠️ HASIL: BERPOTENSI SISIP"
-                    )
+        if submit:
+            # A. Cek Kelengkapan
+            input_map = {
+                "IPK Sem 1": ipk1, "IPK Sem 2": ipk2, "IPK Sem 3": ipk3,
+                "Total SKS": total_sks, "Jumlah SKS nilai D/E/F": sks_d, "MK nilai D/E/F": mk_d,
+                "Jalur": jalur, "Jurusan": jurusan, "Profil": profil, "Asal": kepulauan
+            }
+            field_kosong = [label for label, nilai in input_map.items() if nilai is None]
+            if field_kosong:
+                list_str = ", ".join(field_kosong)
+                st.warning(f"⚠️ **Data Belum Lengkap!** Mohon isi kolom berikut: **{list_str}**")
+            # B. Cek Logika Angka
+            elif total_sks is not None and sks_d is not None:
+                if sks_d > total_sks:
+                    st.error("⛔ **Kesalahan Input! :** SKS Gagal tidak boleh lebih besar dari Total SKS!")
+                elif total_sks == 0 and (ipk1 + ipk2 + ipk3 > 0):
+                    st.error("⛔ **Kesalahan Input! :** Total SKS 0 tapi memiliki IPK. Mohon cek kembali.")  
                 else:
-                    st.success(
-                        "### ✅ HASIL: AMAN (TIDAK SISIP)"
-                    )
-            except Exception as e:
-                st.error(
-                    f"Gagal memprediksi: {e}"
-                )
+                # PEMETAAN ANGKA
+                    map_jalur = {"Raport": 1, "Tes": 2, "Lain-lain": 3}
+                    map_jurusan = {"SMA": 1, "SMK": 2, "Home schooling": 3, "Lain-lain": 4}
+                    map_profil = {"Negeri": 1, "Swasta": 2, "Lain-lain": 2}
+                    map_kepulauan = {
+                        "Jawa": 1, "Sumatera": 2, "Bali & NTT": 3, "Kalimantan": 4,
+                        "Sulawesi": 5, "Papua & Maluku": 6, "Lain-lain": 7
+                    }
+
+                    # Ubah teks dari dropdown web menjadi angka
+                    jalur_angka = map_jalur.get(jalur, 2)
+                    jurusan_angka = map_jurusan.get(jurusan, 4)
+                    profil_angka = map_profil.get(profil, 2)
+                    kepulauan_angka = map_kepulauan.get(kepulauan, 7)
+
+                    #  Masukkan variabel angka ke dalam DataFrame
+                    input_data = pd.DataFrame([{
+                        'ipk1': ipk1, 'ipk2': ipk2, 'ipk3': ipk3,
+                        'total sks semester 1-3': total_sks,
+                        'jumlah sks d/e/f': sks_d, 'jumlah matakuliah d/e/f': mk_d,
+                        'jalur pendaftaran': jalur_angka,      
+                        'jurusan sekolah': jurusan_angka,      
+                        'profil sekolah': profil_angka,        
+                        'kepulauan asal lahir': kepulauan_angka 
+                    }])  
+                    try:
+                        # Langsung lakukan alignment kolom agar urutan fiturnya pas dengan model
+                        X_final = input_data.reindex(columns=VALIDASIPREDIKSI)
+                        # Jalankan prediksi C4.5
+                        pred = model_used.predict(X_final)
+                        path, leaf = get_decision_path(model_used.tree,X_final.iloc[0])    
+                        st.divider()
+                        if pred == 1:
+                            st.error(f"### ⚠️ HASIL: RISIKO SISIP!")
+                        else:
+                            st.success(f"### ✅ HASIL: AMAN (TIDAK SISIP)")
+                            
+ 
+                        # with st.expander("🌳 Mengapa sistem memberikan hasil ini?"):
+                        #     nama_atribut = {
+                        #         "ipk1": "IPK Semester 1",
+                        #         "ipk2": "IPK Semester 2",
+                        #         "ipk3": "IPK Semester 3",
+                        #         "jumlah matakuliah d/e/f": "Jumlah MK D/E/F",
+                        #         "jumlah sks d/e/f": "Jumlah SKS D/E/F",
+                        #         "total sks semester 1-3": "Total SKS Semester 1–3"
+                        #     }
+                        #     for i, step in enumerate(path, start=1):
+                        #         nama = nama_atribut.get(step["feature"], step["feature"])
+                        #         if step["result"]:
+                        #             st.success(f"""**{i}. {nama}**
+                        #                 Nilai mahasiswa: **{step['value']}**
+                        #                 Aturan: **≤ {step['threshold']:.3f}**
+                        #                 ✔ Memenuhi aturan""")
+                        #         else:
+                        #             st.warning(f"""**{i}. {nama}**
+                        #                 Nilai mahasiswa: **{step['value']}**
+                        #                 Aturan: **≤ {step['threshold']:.3f}**
+                        #                 ✖ Tidak memenuhi aturan""")
+                        #     st.divider()                        
+                    except Exception as e:
+                        st.error(f"Gagal memprediksi: {e}")
+
     st.divider()
-
-    st.header("2. PREDIKSI BATCH")
-    template_batch = pd.DataFrame(
-        columns=PRED_COLUMNS
-    )
-    csv_template = template_batch.to_csv(
-        index=False,
-        sep=';'
-    )
-    st.download_button(
-        "📥 DOWNLOAD TEMPLATE",
-        csv_template,
-        "template_prediksi.csv"
-    )
-
-
-    batch_file = st.file_uploader(
-        "Upload File CSV",
-        type=["csv"]
-    )
+    st.subheader("PREDIKSI BANYAK MAHASISWA")
+    csv_tmpl = pd.DataFrame(columns=TemplatePrediksi).to_csv(index=False, sep=';')
+    st.download_button("📥 DOWNLOAD TEMPLATE PREDIKSI", csv_tmpl, "template_prediksi.csv", help="Silahkan download template ini untuk digunakan memprediksi banyak mahasiswa")
+    batch_file = st.file_uploader("Upload File Prediksi", type=["csv"])
     if batch_file is not None:
         try:
             batch_file.seek(0)
-            df_batch = pd.read_csv(
-                batch_file,
-                sep=None,
-                engine='python'
-            )
-            st.write("Preview Data:")
+            df_batch = pd.read_csv(batch_file, sep=None, engine='python')
+            
+            # File tanpa data sama sekali
+            if df_batch.empty:
+                st.error("⛔ File tidak memiliki data utuk diprediksi.")
+                st.stop()
+                
+            # Semua baris kosong
+            if df_batch.dropna(how="all").empty:
+                st.error("⛔ Semua baris pada file kosong.")
+                st.stop()
+            # Cek Kolom
+            uploaded_cols = [c.lower().strip() for c in df_batch.columns]
+            missing_cols = [c for c in VALIDASIPREDIKSI if c not in uploaded_cols]
+            if missing_cols:
+                st.error("⛔ FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template")
+                st.warning(f"Sistem membutuhkan kolom berikut:\n\n`{', '.join(missing_cols)}`")
+                st.stop()
+            kolom_wajib = [
+                c for c in df_batch.columns
+                if c.lower().strip() in VALIDASIPREDIKSI]
+            baris_error = df_batch[kolom_wajib].isnull().any(axis=1)
+            if baris_error.any():
+                st.dataframe(df_batch[baris_error])
+            kolom_kosong = {}
+            for col in kolom_wajib:
+                jumlah_kosong = df_batch[col].isnull().sum()
+                if jumlah_kosong > 0:
+                    kolom_kosong[col] = jumlah_kosong
+            if kolom_kosong:
+                st.error(
+                    "⛔ File tidak dapat diprediksi karena terdapat data kosong.")
+                for col, jumlah in kolom_kosong.items():
+                    st.warning(
+                        f"Kolom '{col}' memiliki {jumlah} data kosong.")
+                st.stop()
+            st.success("✅ File Valid! Siap diproses.")
+            st.info("📄 Preview Data Asli")
             st.dataframe(df_batch.head())
-            if st.button(
-                "🚀 JALANKAN BATCH PREDICTION"
-            ):
-                with st.spinner("Memproses..."):
-
-                    X_batch, _ = preprocess(df_batch)
-
-                    if TARGET in X_batch.columns:
-
-                        X_batch = X_batch.drop(
-                            columns=[TARGET]
-                        )
-
-                    for col in PRED_COLUMNS:
-
-                        if col not in X_batch.columns:
-                            X_batch[col] = 0
-
-                    X_batch = X_batch[PRED_COLUMNS]
-                    y_pred = model_used.predict(
-                        X_batch
-                    )
-                    df_result = df_batch.copy()
-                    df_result["STATUS_PREDIKSI"] = [
-                        "SISIP" if x == 1
-                        else "AMAN"
-                        for x in y_pred
-                    ]
-                    st.success(
-                        "Prediksi batch selesai!"
-                    )
-                    st.dataframe(df_result)
-
-                    res_csv = df_result.to_csv(
-                        index=False,
-                        sep=';'
-                    )
-                    st.download_button(
-                        "📥 DOWNLOAD HASIL",
-                        res_csv,
-                        "hasil_prediksi_batch.csv"
-                    )
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Gagal membaca file CSV: {e}")
+            st.stop()
+        st.divider()
+        if st.button("🚀 CEK PREDIKSI BANYAK MAHASISWA", type="primary"):
+            if model_used is None:
+                st.error("⚠️ Model belum dimuat! Harap data Latih ulang.")
+            else:
+                with st.spinner("Sedang memproses data..."):
+                    try:
+                        # 1. Preprocessing
+                        X_batch_clean, _ = preprocess(df_batch)
+                        # 2. Buang Target
+                        if TARGET in X_batch_clean.columns:
+                            X_batch_clean = X_batch_clean.drop(columns=[TARGET])
+                        st.success("✅ Data berhasil dibersihkan!")
+                        with st.expander("Lihat Hasil Data Bersih"):
+                            st.dataframe(X_batch_clean.head())
+                        # 3. ALIGNMENT KOLOM (PENTING!)
+                        X_final = X_batch_clean.reindex(columns=VALIDASIPREDIKSI, fill_value=0)
+                        # 4. Prediksi
+                        y_pred = model_used.predict(X_final)
+                        # 5. Gabungkan Hasil ke Data Asli
+                        df_result = df_batch.loc[X_batch_clean.index].copy()
+                        df_result["STATUS_PREDIKSI"] = ["RISIKO SISIP" if x == 1 else "AMAN" for x in y_pred]
+                        cols_to_drop = [c for c in df_result.columns if c.lower().strip() == TARGET.lower().strip()]
+                        if cols_to_drop:
+                            df_result = df_result.drop(columns=cols_to_drop)
+                        st.success(f"✅ Prediksi Selesai! ({len(df_result)} Data)")
+                        st.dataframe(df_result)
+                        st.download_button(
+                            "📥 DOWNLOAD HASIL LENGKAP",
+                            df_result.to_csv(index=False, sep=';'),
+                            "hasil_prediksi_mahasiswa.csv"
+                        )
+                    except Exception as e:
+                        st.error(f"Gagal saat kalkulasi: {e}")
+                        
+                        
+elif menu == "MANAJEMEN MODEL":
+    st.title("SISTEM PREDIKSI MAHASISWA BERISIKO SISIP PROGRAM")
+    st.subheader("MANAJEMEN MODEL")
+    with st.expander("ℹ️ Informasi Manajemen Model"):
+        st.write("""
+                    Halaman ini digunakan untuk membangun atau memperbarui model prediksi berdasarkan data historis mahasiswa.
+
+                    Prediksi mahasiswa tetap dapat digunakan tanpa proses ini karena sistem telah menyediakan model bawaan.
+
+                    Gunakan menu ini apabila ingin memperbarui model menggunakan data terbaru.
+                    Urutan proses:
+                    
+                    📂 Upload Data Latih
+                    → 🧹 Persiapan Data
+                    → 🌳 Bangun Model
+                    → 📊 Evaluasi Model
+                    → ✅ Aktifkan Model""")
+    # --- 1. UPLOAD DATA ---
+    c1, c2, c3 = st.columns([2, 1, 1])
+    uploaded_file = c1.file_uploader("UPLOAD DATA LATIH (CSV)", type=["csv"], help="Data historis mahasiswa yang digunakan untuk membangun model prediksi")
+    csv_tmpl = pd.DataFrame(columns=TemplateDataLatih).to_csv(index=False, sep=';')
+    c3.download_button("📥 DOWNLOAD TEMPLATE DATA LATIH", csv_tmpl, "template_data_latih.csv", help="Silahkan download template ini untuk digunakan membangun model Prediksi")
+    
+    if uploaded_file is not None:
+        current_signature = (uploaded_file.name,uploaded_file.size)
+        if current_signature != st.session_state["last_file_signature"]:
+            st.session_state["last_file_signature"] = current_signature
+            st.session_state["data_processed"] = None
+            st.session_state["temp_model"] = None
+            st.session_state["temp_results"] = None
+        try:
+            uploaded_file.seek(0)
+            df_raw = pd.read_csv(uploaded_file, sep=None, engine='python')
+            # File kosong
+            if df_raw.empty:
+                st.error("⛔ File data latih tidak memiliki data.")
+                st.stop()
+            # Semua baris kosong
+            if df_raw.dropna(how="all").empty:
+                st.error("⛔ Semua baris pada file data latih kosong.")
+                st.stop() 
+            uploaded_cols = [c.lower().strip() for c in df_raw.columns]
+            missing_cols = [c for c in VALIDASIDATALATIH if c not in uploaded_cols]
+            if missing_cols:
+                st.error("⛔ FILE DITOLAK: Struktur Data Tidak Sesuai! Silahkan Download dan gunakan template")
+                st.warning(f"File data latih wajib memiliki kolom berikut (Case Insensitive):\n\n`{', '.join(missing_cols)}`")
+                st.stop()
+                
+            # Cek apakah ada atribut wajib yang seluruh nilainya kosong
+            kolom_kosong_total = []
+            for col in df_raw.columns:
+                nama_col = col.lower().strip()
+                if nama_col in VALIDASIDATALATIH:
+                    if df_raw[col].isna().all():
+                        kolom_kosong_total.append(col)
+            if kolom_kosong_total:
+                st.error("⛔ File ditolak karena terdapat atribut yang seluruh nilainya kosong.")
+                st.warning(f"Kolom bermasalah: {', '.join(kolom_kosong_total)}")
+                st.stop()
+            with st.expander("🔍 Lihat Data Asli"):
+                st.dataframe(df_raw.head())
+
+            st.divider()
+         # --- 2. PREPROCESSING ---
+            st.subheader("PERSIAPAN DATA")
+            if st.button("▶️ PROSES DATA"):
+                with st.spinner("Sedang membersihkan data..."):
+                    try:
+                        df_proc, _ = preprocess(df_raw)
+                        st.session_state["data_processed"] = df_proc
+                        st.session_state["temp_model"] = None
+                        st.session_state["temp_results"] = None
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error Preprocessing: {e}")
+        except Exception as e:
+            st.error(f"Gagal membaca file CSV: {e}")
+            st.stop()
+
+        if "data_processed" in st.session_state and st.session_state["data_processed"] is not None:
+            df = st.session_state["data_processed"]
+            st.info(" **Ringkasan Data Latih:**")
+            
+            # untuk tampilkan jumlah data per kelas
+            counts = df[TARGET].value_counts()
+            c_aman = counts.get(0, 0) # Asumsi 0 = Aman
+            c_sisip = counts.get(1, 0) # Asumsi 1 = Sisip (Target)
+            
+            col_d1, col_d2, col_d3 = st.columns(3)
+            col_d1.metric("Total Data", len(df))
+            col_d2.metric("Jumlah 'Tidak Sisip' (Status : 0)", c_aman)
+            col_d3.metric("Jumlah 'Sisip' (Status : 1)", c_sisip)
+            # --- B. TABEL DATA BERSIH (BAGIAN BARU) ---
+            st.write("")
+            with st.expander("🔍 Lihat Data Hasil Pembersihan"):
+                st.dataframe(df, use_container_width=True)
+                st.caption(f"Dimensi Data: {df.shape[0]} Baris x {df.shape[1]} Kolom")
+            # VALIDASI KRITIS
+            if c_sisip < 2:
+                st.error(f"⛔ **DATA TIDAK BISA DIPROSES!**\nData berstatus Sisip terlalu sedikit untuk membangun model. Minimal diperlukan 2 data Sisip. Saat ini hanya ada {c_sisip} data Sisip.")
+                st.stop()
+            elif c_sisip < 10:
+                st.warning("⚠️ **PERINGATAN:** Data 'Sisip' sangat sedikit (< 10). Hasil SMOTE-ENN mungkin tidak akurat.")
+            st.divider()
+             # --- 2. PENGATURAN MODEL ---
+            st.subheader(" PENGATURAN MODEL")
+            c_param1, c_param2 = st.columns(2)
+            with c_param1:
+                k_val = st.number_input("Jumlah Pembagian Data Validasi (K-Fold)", min_value=3, value=5,help="Jumlah lipatan untuk Cross Validation (Standar: 5 atau 10)")
+            with c_param2:
+                leaf_val = st.number_input("Minimal Data pada Daun Keputusan", min_value=1, value=2,help="Minimal sampel di ujung daun pohon keputusan (Standar: 3 atau 5)")
+            errors = []
+            if k_val > 10:
+                errors.append(f"Jumlah Pembagian Data Validasi tidak boleh lebih dari 10. Nilai {k_val} terlalu besar.")
+            if leaf_val > 10:
+                errors.append(f"Minimal Data pada Daun Keputusan tidak boleh lebih dari 10. Nilai {leaf_val} terlalu besar.")
+            if errors:
+                for err in errors:
+                    st.error(err)
+                st.warning("⚠️ Harap perbaiki nilai di atas agar tombol proses muncul.")
+                st.stop() 
+                
+            #bagi data latih dan data uji (80:20) 
+            test_size = 0.2
+            # --- 4. EKSEKUSI DATA LATIH ---
+            if st.button("🚀 BANGUN MODEL", type="primary"):
+                with st.spinner("Sedang membangun model..."):
+                    X = df.drop(TARGET, axis=1)
+                    y = df[TARGET]
+                    cat_idx = get_cat_indices(X)
+                    # TAHAP A: SPLIT 80:20
+                    X_train, X_test, y_train, y_test = train_test_split(
+                        X, y, test_size=test_size, stratify=y, random_state=42
+                    )
+                    # TAHAP B: K-FOLD (Hanya di Data Latih)
+                    kf = StratifiedKFold(n_splits=k_val, shuffle=True, random_state=42)
+                    scores_norm, scores_smote = [], []
+                    try:
+                        for train_ix, val_ix in kf.split(X_train, y_train):
+                            XT, Xv = X_train.iloc[train_ix], X_train.iloc[val_ix]
+                            yT, yv = y_train.iloc[train_ix], y_train.iloc[val_ix]
+                            # Normal
+                            m1 = C45(min_samples_leaf=leaf_val)
+                            m1.fit(XT, yT)
+                            scores_norm.append(f1_score(yv, m1.predict(Xv)))
+                            # SMOTE
+                            try:
+                                sm = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42),random_state=42)
+                                XR, yR = sm.fit_resample(XT, yT)
+                                m2 = C45(min_samples_leaf=leaf_val)
+                                m2.fit(XR, yR)
+                                scores_smote.append(f1_score(yv, m2.predict(Xv)))
+                            except:
+                                scores_smote.append(0)
+                    except Exception as e:
+                        st.error(f"Gagal saat K-Fold: {e}")
+                        st.stop()
+                    mean_norm = np.mean(scores_norm)
+                    mean_smote = np.mean(scores_smote)
+                    # TAHAP C: FINAL TEST
+                    winner = "Normal"
+                    final_score = 0             
+                    if mean_smote > mean_norm and mean_smote > 0:
+                        winner = "SMOTE-ENN"
+                        # Retrain Full Train set
+                        sm_full = SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42), random_state=42)
+                        XT_final, yT_final = sm_full.fit_resample(X_train, y_train)                 
+                        m_final = C45(min_samples_leaf=leaf_val)
+                        m_final.fit(XT_final, yT_final)
+                    else:
+                        m_final = C45(min_samples_leaf=leaf_val)
+                        m_final.fit(X_train, y_train)
+                    final_score = f1_score(y_test, m_final.predict(X_test))
+                    # TAHAP D: DEPLOYMENT (100% Data)
+                    m_deploy = m_final
+                    # Simpan model murni eksperimen 80% ke Session State
+                    st.session_state["temp_model"] = m_deploy
+                    st.session_state["temp_results"] = {
+                        "norm": mean_norm, "smote": mean_smote, "test": final_score, "winner": winner
+                    }
+            # HASIL
+            if "temp_results" in st.session_state and st.session_state["temp_results"] is not None:
+                res = st.session_state["temp_results"]
+                st.success("✅ Model Berhasil Dibangun!")
+                # Tampilkan Metrik
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Model Tanpa Penyeimbang Data", f"F1 Skor : {res['norm']:.4f}")
+                c2.metric("Model dengan Penyeimbang Data (SMOTE-ENN)", f"F1 Skor : {res['smote']:.4f}")
+                c3.metric("HASIL EVALUASI AKHIR", f"F1 Skor : {res['test']:.4f}") 
+                st.info(f" Pendekatan Terpilih: **{res['winner']}**")
+                if st.button(" SIMPAN MODEL (SESI INI SAJA)"):
+                    model_to_use = st.session_state["temp_model"]     
+                    model_to_use.metadata = {
+                        "f1_score": res['test'],
+                        "total_data": len(df),
+                        "algoritma": res['winner'] + " (Sesi Live)"
+                    }               
+                    # 1. Simpan ke Session State (RAM)
+                    st.session_state["active_model"] = model_to_use   
+                    st.success("✅ Model AKTIF! Silakan pindah ke menu 'PREDIKSI MAHASISWA'.")
+                    st.warning("⚠️ Catatan: Model ini hanya hidup sementara. Jika browser di-refresh, Sistem akan kembali menggunakan model Default (File).")
+
+                st.subheader("🌳 Visualisasi Hasil Pohon Keputusan")
+                viz = TreeVisualizer()
+                dot = viz.visualize(st.session_state["temp_model"].tree)
+                st.graphviz_chart(dot)

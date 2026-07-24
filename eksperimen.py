@@ -1,197 +1,232 @@
 import pickle
+
+
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.metrics import accuracy_score, recall_score, f1_score, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, accuracy_score, f1_score, recall_score, precision_score, confusion_matrix
 from imblearn.combine import SMOTEENN
 from imblearn.over_sampling import SMOTENC
+import matplotlib.pyplot as plt
 
-from preprocessing import TARGET, load_data, preprocess, get_cat_indices, select_features
+
+# Import fungsi dari preprocessing.py yang sudah kita perbaiki
+from preprocessing import (TARGET, bersih_data,load_data,preprocess,get_cat_indices,select_atribut, transform_data,)
 from C45 import C45
-# ==========================================
-# 1. LOAD & PREPROCESS DATA
-# ==========================================
+print("\n=== 1. LOADING DATA ===")
+df_raw = load_data("Dataset Mahasiswa Sisipan2.csv")
 
-# Load dataset asli
-df_raw = load_data("Dataset Mahasiswa Sisipan.csv")
+if df_raw is None:
+    print("Gagal membaca data. Pastikan file CSV ada di folder yang sama.")
+    exit()
 
-print("\n=== ATRIBUT DATASET ASLI ===")
-print(df_raw.columns.tolist())
+print(f"Total Data Awal: {df_raw.shape[0]} baris, {df_raw.shape[1]} kolom")
+print("\n=== INFO KOLOM, TIPE, & CONTOH DATA ===")
+isi_data = pd.DataFrame({
+    'Tipe Data': df_raw.dtypes,
+    'Contoh Isi': df_raw.iloc[0]
+})
+print(isi_data)
+print("\nJumlah Missing Values:")
+print(df_raw.isnull().sum())
 
-# Informasi dataset asli
-print("\n=== INFORMASI DATASET ASLI ===")
-print(f"Jumlah Baris  : {df_raw.shape[0]}")
-print(f"Jumlah Kolom  : {df_raw.shape[1]}")
+print("\n=== 2. SELEKSI ATRIBUT ===")
+df_selected = select_atribut(df_raw)
+print("Atribut Terpilih :")
+print("\n".join([f" {col}" for col in df_selected.columns]))
+print(f"Sisa Data Setelah Seleksi: {df_selected.shape[0]} baris")
 
-# Nama atribut
-print("\n=== DAFTAR ATRIBUT DATASET ASLI ===")
-for i, col in enumerate(df_raw.columns, 1):
-    print(f"{i}. {col}")
+print("\n=== 3. PEMBERSIHAN DATA  ===")
+df_clean = bersih_data(df_selected)
+print("\n Data Hasil Pembersihan :")
+print(df_clean.head(5).to_string(index=False))
 
-# Tipe data
-print("\n=== TIPE DATA ATRIBUT ===")
-print(df_raw.dtypes.to_string())
+print("\n=== 4. DATA TRANSFORMASI  ===")
+df_transformed = transform_data(df_clean)
+print("Contoh Data Hasil Transformasi:")
+print(df_transformed.head(5).to_string(index=False))
+print("\nTipe Data Akhir:")
+print(df_transformed.dtypes.to_string())
 
-# Missing value
-print("\n=== JUMLAH MISSING VALUE ===")
-print(df_raw.isnull().sum().to_string())
+# split fitur dan target
+if TARGET not in df_transformed.columns:
+    print(f"Error: Kolom Target '{TARGET}' hilang!")
+    exit()
 
-# ==========================================
-# SELEKSI FITUR
-# ==========================================
+X = df_transformed.drop(columns=[TARGET])
+y = df_transformed[TARGET]
 
-df_selected = select_features(df_raw)
-
-print("\n=== FITUR TERPILIH ===")
-for i, col in enumerate(df_selected.columns, 1):
-    print(f"{i}. {col}")
-
-print("\n=== DATASET SETELAH SELEKSI FITUR ===")
-print(f"Jumlah Baris  : {df_selected.shape[0]}")
-print(f"Jumlah Kolom  : {df_selected.shape[1]}")
-
-print("\n5 Data Pertama:")
-print(df_selected.head().to_string())
-
-# ==========================================
-# PREPROCESSING
-# ==========================================
-
-df, target_map = preprocess(df_selected)
-
-print("\n=== DATASET SETELAH PREPROCESSING ===")
-print(df.head().to_string())
-print(df.dtypes.to_string())
-# ==========================================
-# PEMISAHAN FITUR & TARGET
-# ==========================================
-
-X = df.drop(columns=[TARGET])
-y = df[TARGET]
-
+# Cari index kolom kategorikal
 cat_idx = get_cat_indices(X)
-
-print("\n=== FITUR YANG DIGUNAKAN MODEL ===")
-print(X.columns.tolist())
-
-print("\n=== DISTRIBUSI KELAS ASLI ===")
+print("\nDistribusi Kelas:")
 print(y.value_counts().to_string())
 
-X = df.drop(columns=[TARGET])
-y = df[TARGET]
-cat_idx = get_cat_indices(X)
 
-
-# ==========================================
-# 2. SPLIT DATA AWAL (HOLD-OUT 80:20)
-# ==========================================
-# Pisahkan 20% data sebagai Data Testing Akhir (suci/belum pernah dilihat model)
+print("\n=== 5. SPLIT DATA (80% Latih : 20% Uji Final) ===")
 X_train_full, X_test_final, y_train_full, y_test_final = train_test_split(
-    X, y, test_size=0.20, stratify=y, random_state=42
+    X, y, test_size=0.20,
+    stratify=y,
+    random_state=42
 )
+print(f"Data Latih: {len(X_train_full)} baris")
+print(f"Data Uji Final : {len(X_test_final)} baris")
 
-print(f"Data Latih (K-Fold): {X_train_full.shape[0]} baris")
-print(f"Data Uji Final (Hold-out): {X_test_final.shape[0]} baris")
-
-# ==========================================
-# 3. DEMO INFORMATION GAIN (PADA DATA LATIH)
-# ==========================================
-print("\n=== RANKING FITUR (INFORMATION GAIN) ===")
-# Resample sejenak pada data latih untuk melihat IG yang seimbang
-sm_nc_demo = SMOTENC(categorical_features=cat_idx, random_state=42)
-sm_enn_demo = SMOTEENN(smote=sm_nc_demo, random_state=42)
-XR_demo, yR_demo = sm_enn_demo.fit_resample(X_train_full, y_train_full)
-
-X_res_df = pd.DataFrame(XR_demo, columns=X.columns)
-model_temp = C45()
-ig_results = model_temp.information_gain_all_features(X_res_df, yR_demo)
-for i, (feat, score) in enumerate(ig_results.items(), 1):
-    print(f"{i}. {feat:25}: {score:.6f}")
-
-# ==========================================
-# 4. LOOP EKSPERIMEN (K-FOLD PADA DATA LATIH)
-# ==========================================
+print("\n=== 6. MULAI EKSPERIMEN (MENCARI METODE TERBAIK) ===")
 kfold_list = [3, 5, 10]
-leaf_list = [5,10,20,30]
+leaf_list = [1,2,3,4,5,6,7,8,9,10]
 results_table = []
-
-print("\n=== MEMULAI EKSPERIMEN K-FOLD (MENCARI PARAMETER TERBAIK) ===")
-
+# K-Fold loop di lapisan paling luar menggunakan LIST 
 for k in kfold_list:
+    kf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
+    # untuk simpan hasil tiap fold agar tidak perlu resampling ulang di tiap leaf
+    folds_data = []
+    # Jalankan loop pembagian fold dan proses SMOTE-ENN HANYA SEKALI per nilai K
+    fold_idx = 1
+    for train_idx, val_idx in kf.split(X_train_full, y_train_full):
+        XT, Xv = X_train_full.iloc[train_idx], X_train_full.iloc[val_idx]
+        yT, yv = y_train_full.iloc[train_idx], y_train_full.iloc[val_idx]
+        try:
+            s_enn=SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42), random_state=42)
+            # Proses SMOTE-ENN dijalankan murni sekali di sini
+            XR, yR = s_enn.fit_resample(XT, yT)
+            # CETAK INFO RESAMPLING HANYA PADA FOLD PERTAMA DARI K-FOLD INI
+            if fold_idx == 1:
+                print(f"   INFO RESAMPLING UNTUK K-FOLD = {k}")
+                print(f"==========================================")
+                print(f"Data train asli      : {len(XT)} baris")
+                print(f"Data setelah SMOTEENN: {len(XR)} baris") 
+                # melihat jumlah data per nilai yang unik
+                # print(f"Contoh Data Kepulauan Asal lahir: {XR['kepulauan asal lahir'].value_counts().to_dict()}")
+                # print(f"Contoh Data IPK3: {XR['ipk3'].map('{:.2f}'.format).value_counts().to_dict()}")
+
+                dist_df = pd.DataFrame({
+                    'Asli': yT.value_counts(),
+                    'SMOTE-ENN': pd.Series(yR).value_counts()
+                }).fillna(0).astype(int)
+                print("\nPerubahan Distribusi Kelas:")
+                print(dist_df)
+                print(f"==========================================\n")
+            # Simpan data yang sudah matang ke dalam list penampung
+            folds_data.append((XT, yT, XR, yR, Xv, yv))
+        except Exception as e:
+            print(f"Error Preprocessing di K={k}, Fold={fold_idx}: {e}")
+        fold_idx += 1
+        
+    # SEKARANG JALANKAN PERULANGAN LEAF MENGGUNAKAN DATA YANG SUDAH JADI
     for leaf in leaf_list:
-        kf = StratifiedKFold(n_splits=k, shuffle=True, random_state=42)
         m = {
-            "normal": {"f1": [], "acc": []}, 
-            "smote": {"f1": [], "acc": []}
-        }
-
-        for train_idx, val_idx in kf.split(X_train_full, y_train_full):
-            XT, Xv = X_train_full.iloc[train_idx], X_train_full.iloc[val_idx]
-            yT, yv = y_train_full.iloc[train_idx], y_train_full.iloc[val_idx]
-
-            #A. METODE NORMAL
+            "normal": {"f1": [], "acc": [], "rec": [], "pr": []},
+            "smoteenn": {"f1": [], "acc": [], "rec": [], "pr": []}
+        }  
+        # Susur kembali list data yang sudah matang tadi
+        for XT, yT, XR, yR, Xv, yv in folds_data:
+            # 1. Model tanpa resampling (Normal)
             model = C45(min_samples_leaf=leaf)
             model.fit(XT, yT)
             p = model.predict(Xv)
-            m["normal"]["f1"].append(f1_score(yv, p, average='macro'))
+            m["normal"]["f1"].append(f1_score(yv, p, zero_division=0))
             m["normal"]["acc"].append(accuracy_score(yv, p))
-
-            #B. METODE SMOTE-ENN
-            s_nc = SMOTENC(categorical_features=cat_idx, random_state=42)
-            s_enn = SMOTEENN(smote=s_nc, random_state=42)
-            XR, yR = s_enn.fit_resample(XT, yT)
+            m["normal"]["rec"].append(recall_score(yv, p, zero_division=0))   
+            m["normal"]["pr"].append(precision_score(yv, p, zero_division=0))  
             
+            # 2. Model dengan SMOTE-ENN (Tinggal fit model C4.5 nya saja, data XR dan yR sudah tersedia!)
             model_s = C45(min_samples_leaf=leaf)
             model_s.fit(XR, yR)
             ps = model_s.predict(Xv)
-            m["smote"]["f1"].append(f1_score(yv, ps, average='macro'))
-            m["smote"]["acc"].append(accuracy_score(yv, ps))
-
-        for method in ["normal", "smote"]:
+            m["smoteenn"]["f1"].append(f1_score(yv, ps, zero_division=0))
+            m["smoteenn"]["acc"].append(accuracy_score(yv, ps))
+            m["smoteenn"]["rec"].append(recall_score(yv, ps, zero_division=0))
+            m["smoteenn"]["pr"].append(precision_score(yv, ps, zero_division=0))
+            
+        # Hitung rata-rata hasil untuk disimpan ke tabel hasil akhir
+        for method in ["normal", "smoteenn"]:
             results_table.append({
                 "K": k,
                 "Leaf": leaf,
                 "Method": method,
-                "Acc_mean": np.mean(m[method]["acc"]),
-                "F1_mean": np.mean(m[method]["f1"]), 
+                "Acc_mean": np.mean(m[method]["acc"]) if m[method]["acc"] else 0,
+                "Rec_mean": np.mean(m[method]["rec"]) if m[method]["rec"] else 0,
+                "Pr_mean": np.mean(m[method]["pr"]) if m[method]["pr"] else 0,
+                "F1_mean": np.mean(m[method]["f1"]) if m[method]["f1"] else 0
             })
 
-results_df = pd.DataFrame(results_table)
-print("\n=== HASIL EKSPERIMEN (DIURUTKAN BERDASARKAN F1) ===")
-print(results_df.sort_values(by="F1_mean", ascending=False))
+# Tampilkan rangkuman seluruh eksperimen
+if results_table:
+    results_df = pd.DataFrame(results_table)
+    print("\n=== HASIL LENGKAP EKSPERIMEN ===")
+    pd.set_option('display.max_rows', None)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', 1000)
+    pd.options.display.float_format = '{:.4f}'.format
+    print(results_df.sort_values(by="F1_mean", ascending=False).to_string(index=False))
+else:
+    print("Gagal, tidak ada hasil eksperimen.")
+    exit()
 
-# ==========================================
-# 5. PENGUJIAN AKHIR (HOLD-OUT TEST)
-# ==========================================
+# Mengambil parameter terbaik berdasarkan F1-Score tertinggi
 best = results_df.sort_values(by="F1_mean", ascending=False).iloc[0]
-print(f"\n--- Model Terpilih Untuk Uji Final: {best['Method']} | Leaf: {best['Leaf']} ---")
+print("\n=== 7. UJI FINAL ===")
+print(f"Parameter Terbaik -> Metode: {best['Method'].upper()} | K-Fold: {int(best['K'])} | Leaf: {int(best['Leaf'])}")
 
-# Latih ulang model terbaik pada SELURUH Data Latih (80%)
-X_final_train, y_final_train = X_train_full, y_train_full
-if best["Method"] == "smote":
-    snc = SMOTENC(categorical_features=cat_idx, random_state=42)
-    senn = SMOTEENN(smote=snc, random_state=42)
-    X_final_train, y_final_train = senn.fit_resample(X_train_full, y_train_full)
+# Inisialisasi data latih final
+X_final_train = X_train_full
+y_final_train = y_train_full
 
+if best["Method"] == "smoteenn":
+    try:
+        senn=SMOTEENN(smote=SMOTENC(categorical_features=cat_idx, random_state=42), random_state=42)
+        X_final_train, y_final_train = senn.fit_resample(X_train_full, y_train_full)
+        print("-> Resampling SMOTE + ENN (SMOTEENN) diterapkan pada data latih final.")
+        # print(f"Data setelah SMOTEENN: {len(X_final_train)} baris")
+    except Exception as e:
+        print(f"Gagal melakukan resampling final: {e}")
+
+# Melatih model final dengan parameter terbaik
 final_model = C45(min_samples_leaf=int(best["Leaf"]))
 final_model.fit(X_final_train, y_final_train)
 
-# Prediksi pada Data Uji Final (20%)
+# Prediksi data uji final (hold-out 20%)
 y_pred_final = final_model.predict(X_test_final)
 
-print("\n=== HASIL EVALUASI AKHIR (PADA DATA TESTING 20%) ===")
-print(f"Accuracy  : {accuracy_score(y_test_final, y_pred_final):.4f}")
-print(f"Recall    : {recall_score(y_test_final, y_pred_final, average='macro'):.4f}")
-print(f"F1-Score  : {f1_score(y_test_final, y_pred_final, average='macro'):.4f}")
+# Evaluasi performa akhir model
+acc_final = accuracy_score(y_test_final, y_pred_final)
+pr_final = precision_score(y_test_final, y_pred_final)
+rec_final = recall_score(y_test_final, y_pred_final)
+f1_final = f1_score(y_test_final, y_pred_final)
 
-print("\nConfusion Matrix (Hold-out Test):")
-print(confusion_matrix(y_test_final, y_pred_final))
+print("\nHASIL EVALUASI MODEL FINAL:")
+print(f"Akurasi  : {acc_final:.4f}")
+print(f"Presisi : {pr_final:.4f}")
+print(f"Recall    : {rec_final:.4f}")
+print(f"F1-Skor  : {f1_final:.4f}")
 
-# ==========================================
-# 6. SIMPAN MODEL & CETAK POHON
-# ==========================================
+print("\nConfusion Matrix:")
+cm = confusion_matrix(y_test_final, y_pred_final)
+unique_classes = np.unique(y_test_final)
+cm_df = pd.DataFrame(
+    cm, 
+    index=[f'Aktual {c}' for c in unique_classes], 
+    columns=[f'Prediksi {c}' for c in unique_classes]
+)
+print(cm_df.to_string())
+
+print("\n=== 8. PENYIMPANAN MODEL ===")
 with open('default_model.pkl', 'wb') as f:
     pickle.dump(final_model, f)
+print("Model berhasil disimpan ke 'default_model.pkl'")
 
-print("\n=== STRUKTUR POHON KEPUTUSAN FINAL ===")
+print("\n=== STRUKTUR POHON KEPUTUSAN ===")
 final_model.print_tree()
+
+# disp = ConfusionMatrixDisplay(
+#     confusion_matrix=cm,
+#     display_labels=["Tidak Sisip", "Sisip"]
+# )
+# fig, ax = plt.subplots(figsize=(6,6))
+# disp.plot(ax=ax, cmap="Blues", values_format="d")
+# ax.set_title("Confusion Matrix: Pengujian Model Final C4.5")
+# ax.set_xlabel("Prediksi")
+# ax.set_ylabel("Data Aktual")
+# plt.tight_layout()
+# plt.savefig("confusion_matrix.png", dpi=300, bbox_inches="tight")
+
